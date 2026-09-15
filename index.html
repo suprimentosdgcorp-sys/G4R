@@ -81,7 +81,12 @@
   .proj-head .meta div .l{ font-size:10.5px; color:var(--muted); }
   .proj-head .meta div .v{ font-size:13px; margin-top:2px; font-weight:600; }
   .loading{ padding:60px; text-align:center; color:var(--muted); }
-  select{ background:var(--card); border:1px solid var(--line); color:var(--text); padding:7px 10px; border-radius:7px; font-size:12px; font-family:var(--sans); }
+  select, input[type=date]{ background:var(--card); border:1px solid var(--line); color:var(--text); padding:7px 10px; border-radius:7px; font-size:12px; font-family:var(--sans); }
+  .filters{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; align-items:flex-end; }
+  .fgroup{ display:flex; flex-direction:column; gap:4px; }
+  .fgroup label{ font-size:10.5px; color:var(--muted); }
+  .clear-btn{ border:1px solid var(--line); background:var(--card); padding:7px 12px; border-radius:7px; font-size:12px; color:var(--muted); cursor:pointer; }
+  .filter-gap-note{ background:#FDF0E1; border:1px dashed var(--orange); border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:11px; color:#8A5A1C; }
 </style>
 </head>
 <body>
@@ -113,8 +118,94 @@ Chart.defaults.font.family = 'Inter';
 Chart.defaults.borderColor = '#E4E7EC';
 
 function parseDate(s){ if(!s) return null; const d = new Date(s); return isNaN(d.getTime()) ? null : d; }
+function parseDateBR(s){
+  if(!s) return null;
+  const m = String(s).trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if(!m) return null;
+  return new Date(+m[3], +m[2]-1, +m[1]);
+}
 function diasEntre(a,b){ return Math.round((a-b)/86400000); }
 function normLista(l){ return (l||'').toUpperCase().trim(); }
+
+let FILTROS = { projeto:'', gestor:'', status:'', objetivo:'', tap:'', prazo:'', criticos:false, periodoInicio:'', periodoFim:'' };
+let CURRENT_SCREEN = 's1';
+
+function aplicarFiltros(lista){
+  return lista.filter(p=>{
+    if(FILTROS.projeto && p.nome!==FILTROS.projeto) return false;
+    if(FILTROS.gestor && p.gestor!==FILTROS.gestor) return false;
+    if(FILTROS.status && p.status!==FILTROS.status) return false;
+    if(FILTROS.objetivo){
+      const objs = p.objetivoEstrategico ? p.objetivoEstrategico.split(',').map(s=>s.trim()) : [];
+      if(!objs.includes(FILTROS.objetivo)) return false;
+    }
+    if(FILTROS.tap==='com' && !p.tapExiste) return false;
+    if(FILTROS.tap==='sem' && p.tapExiste) return false;
+    if(FILTROS.prazo==='atraso' && p.status!=='atraso') return false;
+    if(FILTROS.prazo==='iminente' && !p.vencimentoIminente) return false;
+    if(FILTROS.prazo==='emdia' && (p.status==='atraso' || p.vencimentoIminente)) return false;
+    if(FILTROS.criticos && !(p.status==='atraso' || p.semAtualizacao)) return false;
+    if((FILTROS.periodoInicio || FILTROS.periodoFim) && p.tapInicioDate && p.tapTerminoDate){
+      if(FILTROS.periodoInicio && p.tapTerminoDate < new Date(FILTROS.periodoInicio)) return false;
+      if(FILTROS.periodoFim && p.tapInicioDate > new Date(FILTROS.periodoFim)) return false;
+    }
+    return true;
+  });
+}
+
+function renderFiltros(){
+  const gestores = [...new Set(PROJETOS.map(p=>p.gestor))].sort();
+  const objetivos = [...new Set(PROJETOS.flatMap(p=>p.objetivoEstrategico ? p.objetivoEstrategico.split(',').map(s=>s.trim()) : []))].sort();
+  const nomes = PROJETOS.map(p=>p.nome).sort();
+  const opt = (val, cur, label) => `<option value="${val}" ${cur===val?'selected':''}>${label}</option>`;
+
+  return `
+    <div class="filters">
+      <div class="fgroup"><label>Projeto específico</label><select id="fProjeto"><option value="">Todos</option>${nomes.map(n=>opt(n,FILTROS.projeto,n)).join('')}</select></div>
+      <div class="fgroup"><label>Gestor</label><select id="fGestor"><option value="">Todos</option>${gestores.map(g=>opt(g,FILTROS.gestor,g)).join('')}</select></div>
+      <div class="fgroup"><label>Status do projeto</label><select id="fStatus">
+        <option value="">Todos</option>
+        ${opt('andamento',FILTROS.status,'Em andamento')}
+        ${opt('atraso',FILTROS.status,'Em atraso')}
+        ${opt('concluido',FILTROS.status,'Concluído (lista)')}
+        ${opt('naoiniciado',FILTROS.status,'Não iniciado')}
+      </select></div>
+      <div class="fgroup"><label>Objetivo estratégico</label><select id="fObjetivo"><option value="">Todos</option>${objetivos.map(o=>opt(o,FILTROS.objetivo,o)).join('')}</select></div>
+      <div class="fgroup"><label>Situação do TAP</label><select id="fTap">
+        <option value="">Todos</option>
+        ${opt('com',FILTROS.tap,'Com TAP')}
+        ${opt('sem',FILTROS.tap,'Sem TAP')}
+      </select></div>
+      <div class="fgroup"><label>Situação de prazo</label><select id="fPrazo">
+        <option value="">Todos</option>
+        ${opt('atraso',FILTROS.prazo,'Em atraso')}
+        ${opt('iminente',FILTROS.prazo,'Vencimento iminente')}
+        ${opt('emdia',FILTROS.prazo,'Em dia')}
+      </select></div>
+      <div class="fgroup"><label>Período (TAP início)</label><input type="date" id="fPeriodoInicio" value="${FILTROS.periodoInicio}"></div>
+      <div class="fgroup"><label>Período (TAP fim)</label><input type="date" id="fPeriodoFim" value="${FILTROS.periodoFim}"></div>
+      <div class="fgroup"><label style="display:flex;align-items:center;gap:6px;white-space:nowrap;"><input type="checkbox" id="fCriticos" ${FILTROS.criticos?'checked':''}/> Somente críticos</label></div>
+      <button class="clear-btn" id="fLimpar">Limpar filtros</button>
+    </div>
+    <div class="filter-gap-note"><b>Fora do filtro:</b> Empresa/Marca e Setor (sem fonte de dado). Nível de Risco não é campo próprio — use "Situação de prazo → Vencimento iminente". Período só afeta projetos com datas de TAP; quem não tem TAP permanece visível em qualquer período selecionado.</div>
+  `;
+}
+
+function wireFiltros(){
+  document.getElementById('fProjeto').onchange = e=>{ FILTROS.projeto=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fGestor').onchange = e=>{ FILTROS.gestor=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fStatus').onchange = e=>{ FILTROS.status=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fObjetivo').onchange = e=>{ FILTROS.objetivo=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fTap').onchange = e=>{ FILTROS.tap=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fPrazo').onchange = e=>{ FILTROS.prazo=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fPeriodoInicio').onchange = e=>{ FILTROS.periodoInicio=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fPeriodoFim').onchange = e=>{ FILTROS.periodoFim=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fCriticos').onchange = e=>{ FILTROS.criticos=e.target.checked; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fLimpar').onclick = ()=>{
+    FILTROS = { projeto:'', gestor:'', status:'', objetivo:'', tap:'', prazo:'', criticos:false, periodoInicio:'', periodoFim:'' };
+    ativarTela(CURRENT_SCREEN);
+  };
+}
 
 async function fetchCSV(url){
   const resp = await fetch(url);
@@ -193,7 +284,9 @@ function agregarProjetos(cardRows, tapRows){
       semMetaMensuravel, vencimentoIminente, diasParaVencer,
       investimentoEstimado: tap ? (tap['Investimento Estimado (R$)']||'') : '',
       indicadorSucesso: tap ? (tap['Indicador de Sucesso (texto)']||'') : '',
-      tapExiste: !!tap
+      tapExiste: !!tap,
+      tapInicioDate: tap ? parseDateBR(tap['Data de Início']) : null,
+      tapTerminoDate: tap ? parseDateBR(tap['Data de Término']) : null
     };
   });
 }
@@ -234,6 +327,7 @@ function renderTela1(p){
   document.getElementById('mainArea').innerHTML = `
     <h1>Visão executiva do portfólio</h1>
     <p class="lede">Dados ao vivo — Trello (execução) + TAP (governança)</p>
+    ${renderFiltros()}
     <div class="kpi-row">
       <div class="kpi"><div class="top"><span class="lbl">Total de projetos</span><span class="icon gray">▦</span></div><div class="val">${total}</div><div class="sub">boards ativos no workspace</div></div>
       <div class="kpi"><div class="top"><span class="lbl">Em andamento</span><span class="icon blue">▶</span></div><div class="val" style="color:var(--blue)">${andamento}</div><div class="sub">${pct(andamento,total)}% da carteira</div></div>
@@ -286,6 +380,7 @@ function renderTela1(p){
     data:{ labels: topGestores.map(g=>g[0]), datasets:[{ data: topGestores.map(g=>g[1]), backgroundColor:'#E08A2C', borderRadius:4 }]},
     options:{ plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}},y:{grid:{color:'#EEF0F3'}}} }
   });
+  wireFiltros();
 }
 
 function renderTela2(p){
@@ -313,6 +408,7 @@ function renderTela2(p){
   document.getElementById('mainArea').innerHTML = `
     <h1>Análise gerencial e governança</h1>
     <p class="lede">Trello + TAP — sem dependência de dado financeiro</p>
+    ${renderFiltros()}
     <div class="gov-grid">
       <div class="gov-card"><div class="val" style="color:var(--red)">${semTAP}</div><div class="lbl">Projetos sem TAP</div></div>
       <div class="gov-card"><div class="val">${semResponsavel}</div><div class="lbl">Com tarefas sem responsável</div></div>
@@ -331,6 +427,7 @@ function renderTela2(p){
       </table>
     </div>
   `;
+  wireFiltros();
 }
 
 function renderTela3(p, cardIdParam){
@@ -340,9 +437,11 @@ function renderTela3(p, cardIdParam){
   }
   document.getElementById('mainArea').innerHTML = `
     <h1>Detalhamento do projeto</h1>
-    <p class="lede">Todos os ${p.length} projetos — clique em um para ver o detalhamento</p>
+    <p class="lede">${p.length} de ${PROJETOS.length} projetos no filtro atual — clique em um para ver o detalhamento</p>
+    ${renderFiltros()}
     <div class="panel"><table id="projTable"><tr><th>Projeto</th><th>Gestor</th><th>Status</th><th>Tarefas</th><th>TAP</th></tr></table></div>
   `;
+  wireFiltros();
   const tbl = document.getElementById('projTable');
   p.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).forEach(proj=>{
     const tr = document.createElement('tr');
@@ -399,7 +498,7 @@ function renderDetalhe(proj){
       </table>
     </div>
   `;
-  document.getElementById('voltarPortfolio').addEventListener('click', ()=>renderTela3(PROJETOS));
+  document.getElementById('voltarPortfolio').addEventListener('click', ()=>ativarTela('s3'));
   new Chart(document.getElementById('chartEvol'), {
     type:'doughnut',
     data:{ labels:['Concluídas','Restantes'], datasets:[{ data:[evolPct,100-evolPct], backgroundColor:['#E08A2C','#EEF0F3'], borderWidth:0 }]},
@@ -435,6 +534,7 @@ function renderTela4(p){
   document.getElementById('mainArea').innerHTML = `
     <h1>Central de alertas</h1>
     <p class="lede">Gerados a partir de Trello + TAP — sem alerta de orçamento (sem fonte de dado)</p>
+    ${renderFiltros()}
     <div class="kpi-row" style="grid-template-columns:repeat(3,1fr);">
       <div class="kpi"><div class="top"><span class="lbl">Alertas críticos</span><span class="icon red">⚠</span></div><div class="val" style="color:var(--red)">${nCritica}</div></div>
       <div class="kpi"><div class="top"><span class="lbl">Alertas altos</span><span class="icon orange">◷</span></div><div class="val" style="color:var(--orange)">${nAlta}</div></div>
@@ -447,13 +547,15 @@ function renderTela4(p){
       ${alertas.length>60 ? `<div class="note" style="margin-top:10px;">Mostrando 60 de ${alertas.length} alertas.</div>` : ''}
     </div>
   `;
+  wireFiltros();
 }
 
 const RENDERERS = { s1: renderTela1, s2: renderTela2, s3: renderTela3, s4: renderTela4 };
 
 function ativarTela(id){
+  CURRENT_SCREEN = id;
   document.querySelectorAll('.rail button').forEach(b=>b.classList.toggle('active', b.dataset.screen===id));
-  RENDERERS[id](PROJETOS);
+  RENDERERS[id](aplicarFiltros(PROJETOS));
 }
 
 document.querySelectorAll('.rail button').forEach(btn=>{
