@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Grupo G4R — BI de Portfólio de Projetos</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --bg:#F4F5F7; --card:#FFFFFF; --line:#E4E7EC; --text:#12141A; --muted:#6B7280;
+    --navy:#1E2A47; --orange:#E08A2C; --orange-bg:#FDF0E1;
+    --blue:#5B7FE8; --blue-bg:#EAEEFD; --red:#E15A5A; --red-bg:#FCEAEA;
+    --green:#3FA873; --green-bg:#E9F6F0; --purple:#9B7FE8; --sans:'Inter', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--bg); color:var(--text); font-family:var(--sans); font-size:13.5px; }
+  .app{ display:flex; min-height:100vh; }
+  .rail{ width:210px; flex-shrink:0; background:var(--card); border-right:1px solid var(--line); padding:18px 0; }
+  .rail .brand{ display:flex; align-items:center; gap:10px; padding:0 18px 18px; border-bottom:1px solid var(--line); margin-bottom:14px; }
+  .rail .brand .logo{ width:32px; height:32px; border-radius:7px; background:var(--navy); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; }
+  .rail .brand .name{ font-weight:600; font-size:13px; }
+  .rail .brand .sub{ color:var(--muted); font-size:10.5px; }
+  .rail nav{ display:flex; flex-direction:column; gap:2px; padding:0 10px; }
+  .rail button{ all:unset; cursor:pointer; padding:10px 12px; border-radius:7px; color:var(--muted); font-size:13px; font-weight:500; display:flex; align-items:center; gap:9px; border-left:3px solid transparent; }
+  .rail button:hover{ background:#F7F8FA; }
+  .rail button.active{ background:var(--orange-bg); color:var(--orange); border-left:3px solid var(--orange); }
+  .rail .dot{ width:6px; height:6px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+  .rail button.active .dot{ background:var(--orange); }
+  .rail .foot{ margin-top:24px; padding:14px 18px 0; border-top:1px solid var(--line); color:var(--muted); font-size:10.5px; line-height:1.6; }
+  .main{ flex:1; padding:26px 32px 60px; max-width:1260px; }
+  h1{ font-size:19px; font-weight:700; margin:0 0 3px; }
+  .lede{ color:var(--muted); font-size:12.5px; margin:0 0 18px; }
+  .kpi-row{ display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:14px; }
+  .kpi{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; box-shadow:0 1px 2px rgba(16,24,40,.03); }
+  .kpi-click{ cursor:pointer; transition:box-shadow .12s, border-color .12s; }
+  .kpi-click:hover{ box-shadow:0 3px 10px rgba(16,24,40,.10); border-color:var(--orange); }
+  .kpi .top{ display:flex; justify-content:space-between; align-items:flex-start; }
+  .kpi .lbl{ font-size:11px; color:var(--muted); font-weight:500; }
+  .kpi .icon{ width:22px; height:22px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:12px; }
+  .kpi .val{ font-size:24px; font-weight:700; margin-top:8px; }
+  .kpi .sub{ font-size:10.5px; color:var(--muted); margin-top:2px; }
+  .icon.blue{ background:var(--blue-bg); color:var(--blue); } .icon.red{ background:var(--red-bg); color:var(--red); }
+  .icon.green{ background:var(--green-bg); color:var(--green); } .icon.orange{ background:var(--orange-bg); color:var(--orange); }
+  .icon.gray{ background:#F1F2F4; color:var(--muted); }
+  .gap-card{ background:#FDF0E1; border:1px dashed var(--orange); border-radius:10px; padding:13px 16px; margin-bottom:18px; font-size:12px; color:#8A5A1C; }
+  .gap-card b{ font-weight:700; }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
+  .panel{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; box-shadow:0 1px 2px rgba(16,24,40,.03); }
+  .panel h3{ font-size:13px; font-weight:600; margin:0 0 3px; }
+  .panel .note{ color:var(--muted); font-size:10.5px; margin-bottom:10px; }
+  .chart-box{ height:210px; }
+  table{ width:100%; border-collapse:collapse; font-size:12px; }
+  th{ text-align:left; color:var(--muted); font-weight:500; font-size:10.5px; padding:8px 10px; border-bottom:1px solid var(--line); }
+  td{ padding:9px 10px; border-bottom:1px solid var(--line); }
+  tr:last-child td{ border-bottom:none; }
+  .pill{ display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:12px; font-size:10.5px; font-weight:600; }
+  .pill .dot{ width:6px; height:6px; border-radius:50%; }
+  .pill.andamento{ background:var(--blue-bg); color:var(--blue); } .pill.andamento .dot{ background:var(--blue); }
+  .pill.atraso{ background:var(--red-bg); color:var(--red); } .pill.atraso .dot{ background:var(--red); }
+  .pill.concluido{ background:var(--green-bg); color:var(--green); } .pill.concluido .dot{ background:var(--green); }
+  .pill.naoiniciado{ background:#F1F2F4; color:var(--muted); } .pill.naoiniciado .dot{ background:var(--muted); }
+  .pill.critica{ background:var(--red-bg); color:var(--red); } .pill.alta{ background:var(--orange-bg); color:var(--orange); }
+  .pill.media{ background:#F1F2F4; color:var(--muted); }
+  .pill.saudavel{ background:var(--green-bg); color:var(--green); } .pill.saudavel .dot{ background:var(--green); }
+  .pill.atencao{ background:var(--orange-bg); color:var(--orange); } .pill.atencao .dot{ background:var(--orange); }
+  .pill.critico{ background:var(--red-bg); color:var(--red); } .pill.critico .dot{ background:var(--red); }
+  .tap-sim{ color:var(--green); font-weight:700; font-size:11.5px; } .tap-nao{ color:var(--red); font-weight:700; font-size:11.5px; }
+  .prov-note{ background:#FDF0E1; border:1px dashed var(--orange); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:11px; color:#8A5A1C; }
+  .mut{ color:var(--muted); } .pending{ color:var(--orange); font-size:11px; font-style:italic; }
+  .bar-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .bar-row .name{ width:150px; font-size:11.5px; color:var(--muted); flex-shrink:0; }
+  .bar-track{ flex:1; height:8px; background:#EEF0F3; border-radius:4px; overflow:hidden; }
+  .bar-fill{ height:100%; border-radius:4px; }
+  .bar-row .pct{ width:34px; font-size:11.5px; text-align:right; flex-shrink:0; font-weight:600; }
+  .screen{ display:none; } .screen.active{ display:block; }
+  .breadcrumb{ color:var(--muted); font-size:12px; margin-bottom:8px; cursor:pointer; }
+  .breadcrumb:hover{ color:var(--text); }
+  .gov-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
+  .gov-card{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .gov-card .val{ font-size:26px; font-weight:700; color:var(--orange); }
+  .gov-card .lbl{ font-size:11.5px; color:var(--muted); margin-top:4px; }
+  .proj-head{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:14px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  .proj-head .meta{ display:flex; gap:26px; flex-wrap:wrap; }
+  .proj-head .meta div .l{ font-size:10.5px; color:var(--muted); }
+  .proj-head .meta div .v{ font-size:13px; margin-top:2px; font-weight:600; }
+  .loading{ padding:60px; text-align:center; color:var(--muted); }
+  select, input[type=date]{ background:var(--card); border:1px solid var(--line); color:var(--text); padding:7px 10px; border-radius:7px; font-size:12px; font-family:var(--sans); }
+  .filters{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; align-items:flex-end; }
+  .fgroup{ display:flex; flex-direction:column; gap:4px; }
+  .fgroup label{ font-size:10.5px; color:var(--muted); }
+  .clear-btn{ border:1px solid var(--line); background:var(--card); padding:7px 12px; border-radius:7px; font-size:12px; color:var(--muted); cursor:pointer; }
+  .filter-gap-note{ background:#FDF0E1; border:1px dashed var(--orange); border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:11px; color:#8A5A1C; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="rail">
+    <div class="brand"><div class="logo">G4</div><div><div class="name">Grupo G4R</div><div class="sub">BI de portfólio</div></div></div>
+    <nav>
+      <button class="active" data-screen="s1"><span class="dot"></span> Visão executiva</button>
+      <button data-screen="s2"><span class="dot"></span> Análise gerencial</button>
+      <button data-screen="s3"><span class="dot"></span> Detalhamento</button>
+      <button data-screen="s4"><span class="dot"></span> Central de alertas</button>
+    </nav>
+    <div class="foot" id="footInfo">Carregando dados do Trello + TAP...</div>
+  </div>
+  <div class="main" id="mainArea">
+    <div class="loading">Carregando dados ao vivo do Trello e TAP…</div>
+  </div>
+</div>
+
+<script>
+const CARDS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQDzive4CAtbVpbo7nR24yUX-QYu7GpZzQCtvoBFpfj7OD9jxLgugYgK45J5-deQvoog0fcsf0CN7ov/pub?gid=271555632&single=true&output=csv';
+const TAP_CSV_URL   = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQDzive4CAtbVpbo7nR24yUX-QYu7GpZzQCtvoBFpfj7OD9jxLgugYgK45J5-deQvoog0fcsf0CN7ov/pub?gid=1825536986&single=true&output=csv';
+
+const SEM_ATUALIZACAO_DIAS = 20;
+const VENCIMENTO_IMINENTE_DIAS = 15;
+// RN11 — faixa de tolerância do desvio de ritmo, em pontos percentuais (prazo consumido - execução).
+// O documento (item 18) pede validação do board; valor abaixo é provisório, herdado da mesma lógica de VENCIMENTO_IMINENTE_DIAS.
+const DESVIO_RITMO_LIMITE = 15;
+// Boards que aparecem na planilha Dashboard_G4R > Fato_Trello_Cards mas não são projetos do G4R
+// (ex.: "Estudos - DNC" é um quadro pessoal de teste) — nunca devem entrar no portfólio.
+const BOARDS_EXCLUIDOS = ['Estudos - DNC'];
+
+Chart.defaults.color = '#6B7280';
+Chart.defaults.font.family = 'Inter';
+Chart.defaults.borderColor = '#E4E7EC';
+
+function parseDate(s){ if(!s) return null; const d = new Date(s); return isNaN(d.getTime()) ? null : d; }
+function parseDateBR(s){
+  if(!s) return null;
+  const m = String(s).trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if(!m) return null;
+  return new Date(+m[3], +m[2]-1, +m[1]);
+}
+function diasEntre(a,b){ return Math.round((a-b)/86400000); }
+function normLista(l){ return (l||'').toUpperCase().trim(); }
+function normBool(v){ return String(v||'').trim().toUpperCase()==='TRUE'; } // sem uso nesta fonte (schema atual não tem booleano Concluido); mantido por segurança
+function isConcluido(c){ return normLista(c['Lista (Status)']) === 'CONCLUÍDOS'; }
+
+const FILTROS_PADRAO = { projeto:'', gestor:'', status:'', objetivo:'', tap:'', prazo:'', criticos:false, periodoInicio:'', periodoFim:'', risco:'', semAtualizacaoOnly:false, saude:'' };
+let FILTROS = { ...FILTROS_PADRAO };
+let CURRENT_SCREEN = 's1';
+
+// RF14 — drill-down: um card/gráfico do portfólio define um recorte de filtro e manda pra lista filtrada (Tela 3).
+// Reseta os demais filtros de propósito (é uma nova pergunta "me mostra só isso", não um AND com o que já estava selecionado).
+function filtrarEIr(partial){
+  FILTROS = { ...FILTROS_PADRAO, ...partial };
+  ativarTela('s3');
+}
+
+function aplicarFiltros(lista){
+  return lista.filter(p=>{
+    if(FILTROS.projeto && p.nome!==FILTROS.projeto) return false;
+    if(FILTROS.gestor && p.gestor!==FILTROS.gestor) return false;
+    if(FILTROS.status && p.status!==FILTROS.status) return false;
+    if(FILTROS.objetivo){
+      const objs = p.objetivoEstrategico ? p.objetivoEstrategico.split(',').map(s=>s.trim()) : [];
+      if(!objs.includes(FILTROS.objetivo)) return false;
+    }
+    if(FILTROS.tap==='com' && !p.tapExiste) return false;
+    if(FILTROS.tap==='sem' && p.tapExiste) return false;
+    if(FILTROS.prazo==='atraso' && p.status!=='atraso') return false;
+    if(FILTROS.prazo==='iminente' && !p.vencimentoIminente) return false;
+    if(FILTROS.prazo==='emdia' && (p.status==='atraso' || p.vencimentoIminente)) return false;
+    if(FILTROS.criticos && !(p.status==='atraso' || p.semAtualizacao)) return false;
+    if(FILTROS.risco==='sim' && !p.emRisco) return false;
+    if(FILTROS.risco==='nao' && p.emRisco) return false;
+    if(FILTROS.semAtualizacaoOnly && !p.semAtualizacao) return false;
+    if(FILTROS.saude && p.saude.classe !== FILTROS.saude) return false;
+    if((FILTROS.periodoInicio || FILTROS.periodoFim) && p.tapInicioDate && p.tapTerminoDate){
+      if(FILTROS.periodoInicio && p.tapTerminoDate < new Date(FILTROS.periodoInicio)) return false;
+      if(FILTROS.periodoFim && p.tapInicioDate > new Date(FILTROS.periodoFim)) return false;
+    }
+    return true;
+  });
+}
+
+function renderFiltros(){
+  const gestores = [...new Set(PROJETOS.map(p=>p.gestor))].sort();
+  const objetivos = [...new Set(PROJETOS.flatMap(p=>p.objetivoEstrategico ? p.objetivoEstrategico.split(',').map(s=>s.trim()) : []))].sort();
+  const nomes = PROJETOS.map(p=>p.nome).sort();
+  const opt = (val, cur, label) => `<option value="${val}" ${cur===val?'selected':''}>${label}</option>`;
+
+  return `
+    <div class="filters">
+      <div class="fgroup"><label>Projeto específico</label><select id="fProjeto"><option value="">Todos</option>${nomes.map(n=>opt(n,FILTROS.projeto,n)).join('')}</select></div>
+      <div class="fgroup"><label>Gestor</label><select id="fGestor"><option value="">Todos</option>${gestores.map(g=>opt(g,FILTROS.gestor,g)).join('')}</select></div>
+      <div class="fgroup"><label>Status do projeto</label><select id="fStatus">
+        <option value="">Todos</option>
+        ${opt('andamento',FILTROS.status,'Em andamento')}
+        ${opt('atraso',FILTROS.status,'Em atraso')}
+        ${opt('concluido',FILTROS.status,'Concluído (lista)')}
+        ${opt('naoiniciado',FILTROS.status,'Não iniciado')}
+      </select></div>
+      <div class="fgroup"><label>Objetivo estratégico</label><select id="fObjetivo"><option value="">Todos</option>${objetivos.map(o=>opt(o,FILTROS.objetivo,o)).join('')}</select></div>
+      <div class="fgroup"><label>Situação do TAP</label><select id="fTap">
+        <option value="">Todos</option>
+        ${opt('com',FILTROS.tap,'Com TAP')}
+        ${opt('sem',FILTROS.tap,'Sem TAP')}
+      </select></div>
+      <div class="fgroup"><label>Situação de prazo</label><select id="fPrazo">
+        <option value="">Todos</option>
+        ${opt('atraso',FILTROS.prazo,'Em atraso')}
+        ${opt('iminente',FILTROS.prazo,'Vencimento iminente')}
+        ${opt('emdia',FILTROS.prazo,'Em dia')}
+      </select></div>
+      <div class="fgroup"><label>Nível de risco</label><select id="fRisco">
+        <option value="">Todos</option>
+        ${opt('sim',FILTROS.risco,'Em risco')}
+        ${opt('nao',FILTROS.risco,'Sem risco identificado')}
+      </select></div>
+      <div class="fgroup"><label>Período (TAP início)</label><input type="date" id="fPeriodoInicio" value="${FILTROS.periodoInicio}"></div>
+      <div class="fgroup"><label>Período (TAP fim)</label><input type="date" id="fPeriodoFim" value="${FILTROS.periodoFim}"></div>
+      <div class="fgroup"><label style="display:flex;align-items:center;gap:6px;white-space:nowrap;"><input type="checkbox" id="fCriticos" ${FILTROS.criticos?'checked':''}/> Somente críticos</label></div>
+      <button class="clear-btn" id="fLimpar">Limpar filtros</button>
+    </div>
+    <div class="filter-gap-note"><b>Fora do filtro:</b> Empresa/Marca e Setor (sem fonte de dado). "Em risco" = vencimento iminente (≤${VENCIMENTO_IMINENTE_DIAS}d) OU desvio de ritmo (RN11) acima de ${DESVIO_RITMO_LIMITE} p.p., sem contar quem já está atrasado ou concluído — não há regra de risco validada pelo board/PMO. Período só afeta projetos com datas de TAP; quem não tem TAP permanece visível em qualquer período selecionado.</div>
+  `;
+}
+
+function wireFiltros(){
+  document.getElementById('fProjeto').onchange = e=>{ FILTROS.projeto=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fGestor').onchange = e=>{ FILTROS.gestor=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fStatus').onchange = e=>{ FILTROS.status=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fObjetivo').onchange = e=>{ FILTROS.objetivo=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fTap').onchange = e=>{ FILTROS.tap=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fPrazo').onchange = e=>{ FILTROS.prazo=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fRisco').onchange = e=>{ FILTROS.risco=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fPeriodoInicio').onchange = e=>{ FILTROS.periodoInicio=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fPeriodoFim').onchange = e=>{ FILTROS.periodoFim=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fCriticos').onchange = e=>{ FILTROS.criticos=e.target.checked; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fLimpar').onclick = ()=>{
+    FILTROS = { ...FILTROS_PADRAO };
+    ativarTela(CURRENT_SCREEN);
+  };
+}
+
+async function fetchCSV(url){
+  const resp = await fetch(url);
+  const text = await resp.text();
+  return Papa.parse(text, { header: true, skipEmptyLines: true }).data;
+}
+
+// RF12/RN13 — Índice de Aderência à Governança (0-100), pesos "exemplo de peso" da seção 8.4 do documento de requisitos.
+// Ainda não validados pelo board/PMO (item 18) — tratar como proposta, não como número final.
+const CRITERIOS_GOVERNANCA = [
+  { chave:'tap', peso:20, label:'TAP cadastrado', ok: p => p.tapExiste },
+  { chave:'objetivo', peso:15, label:'Objetivo e meta mensuráveis', ok: p => !!p.objetivoEstrategico },
+  { chave:'indicadores', peso:15, label:'Indicadores cadastrados', ok: p => !p.semMetaMensuravel },
+  { chave:'respTarefas', peso:15, label:'Tarefas com responsável', ok: p => !p.semResponsavel },
+  { chave:'prazoTarefas', peso:15, label:'Tarefas com prazo', ok: p => !p.semPrazo },
+  { chave:'atualizacao', peso:10, label:'Atualização em dia', ok: p => !p.semAtualizacao },
+  { chave:'prazoProjeto', peso:10, label:'Prazo do projeto definido', ok: p => !!p.tapTerminoDate }
+];
+function calcGovernanca(p){
+  const obtido = CRITERIOS_GOVERNANCA.reduce((s,c)=> s + (c.ok(p) ? c.peso : 0), 0);
+  return Math.round(obtido); // pesos já somam 100
+}
+
+// RF11/RN14 — Saúde do projeto (0-100 -> Saudável/Atenção/Crítico).
+// O documento pede considerar prazo, execução, resultado, governança e atualização, "com pesos parametrizáveis",
+// mas NÃO dá pesos de exemplo (diferente da governança, seção 8.4) nem faixas de corte — ambos são provisórios aqui.
+// "Resultado" fica de fora do cálculo: RF09/RF10 seguem sem indicador estruturado (meta/atual numérico) em nenhum projeto.
+const PESOS_SAUDE = { prazo:0.35, execucao:0.30, governanca:0.20, atualizacao:0.15 };
+function calcSaude(p, governancaIndice){
+  let prazoScore;
+  if(p.status==='atraso') prazoScore = 0;
+  else if(p.vencimentoIminente) prazoScore = 50;
+  else prazoScore = 100;
+  const execScore = pct(p.nConcluido, p.total);
+  const atualizacaoScore = p.semAtualizacao ? 0 : 100;
+  const score = Math.round(
+    prazoScore*PESOS_SAUDE.prazo + execScore*PESOS_SAUDE.execucao +
+    governancaIndice*PESOS_SAUDE.governanca + atualizacaoScore*PESOS_SAUDE.atualizacao
+  );
+  let classe, label;
+  if(score>=75){ classe='saudavel'; label='Saudável'; }
+  else if(score>=50){ classe='atencao'; label='Atenção'; }
+  else { classe='critico'; label='Crítico'; }
+  return { score, classe, label };
+}
+
+function agregarProjetos(cardRows, tapRows){
+  const tapByBoard = {};
+  tapRows.forEach(r => { if(r['Board']) tapByBoard[r['Board']] = r; });
+
+  const boards = {};
+  cardRows.forEach(r => {
+    const nome = r['Board'];
+    if(!nome) return;
+    if(BOARDS_EXCLUIDOS.some(b => b.toLowerCase() === nome.trim().toLowerCase())) return;
+    if(!boards[nome]) boards[nome] = [];
+    boards[nome].push(r);
+  });
+
+  const now = new Date();
+
+  return Object.entries(boards).map(([nome, cards]) => {
+    const listas = cards.map(c => normLista(c['Lista (Status)']));
+    const total = cards.length;
+    const nInicio = listas.filter(l=>l==='A INICIAR').length;
+    const nAndamento = listas.filter(l=>l==='EM ANDAMENTO').length;
+    const nAtraso = listas.filter(l=>l==='ATRASADOS').length;
+    const nConcluido = listas.filter(l=>l==='CONCLUÍDOS').length;
+
+    let status;
+    if(nAtraso>0) status='atraso';
+    else if(total>0 && nConcluido===total) status='concluido';
+    else if(total>0 && nInicio===total) status='naoiniciado';
+    else status='andamento';
+
+    const datasAtividade = cards.map(c=>parseDate(c['Última Atividade'])).filter(Boolean);
+    const ultimaAtividade = datasAtividade.length ? new Date(Math.max(...datasAtividade)) : null;
+    const diasSemAtualizacao = ultimaAtividade ? diasEntre(now, ultimaAtividade) : null;
+    const semAtualizacao = diasSemAtualizacao===null || diasSemAtualizacao > SEM_ATUALIZACAO_DIAS;
+
+    const cardsAtivos = cards.filter(c => !isConcluido(c));
+    const semResponsavel = cardsAtivos.some(c => !c['Responsável(is)']);
+    const semPrazo = cardsAtivos.some(c => !c['Data Fim']);
+
+    const tarefasAtrasadas = cards.filter(c=>{
+      if(isConcluido(c)) return false;
+      const d = parseDate(c['Data Fim']);
+      return d && d < now;
+    });
+
+    const tap = tapByBoard[nome];
+    const semTAP = !tap;
+
+    let gestor = tap ? (tap['Gestor']||'').trim() : '';
+    if(!gestor){
+      const freq = {};
+      cardsAtivos.forEach(c => (c['Responsável(is)']||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(n=>freq[n]=(freq[n]||0)+1));
+      const top = Object.entries(freq).sort((a,b)=>b[1]-a[1])[0];
+      gestor = top ? top[0] : '';
+    }
+
+    const objetivoEstrategico = tap ? (tap['Objetivo Estratégico']||'').trim() : '';
+    const semMetaMensuravel = !tap || !(tap['Indicador de Sucesso (texto)']||'').trim();
+
+    const proximosVencimentos = cardsAtivos
+      .map(c=>parseDate(c['Data Fim']))
+      .filter(d => d && d >= now);
+    const proximoPrazo = proximosVencimentos.length ? new Date(Math.min(...proximosVencimentos)) : null;
+    const diasParaVencer = proximoPrazo ? diasEntre(proximoPrazo, now) : null;
+    const vencimentoIminente = diasParaVencer !== null && diasParaVencer <= VENCIMENTO_IMINENTE_DIAS;
+
+    // RN11 — Desvio de ritmo: prazo consumido (data de início mais antiga -> data de fim mais próxima, entre as tarefas)
+    // comparado ao % de execução física.
+    const datasInicioTarefas = cards.map(c=>parseDate(c['Data Início'])).filter(Boolean);
+    const datasFimTarefas = cards.map(c=>parseDate(c['Data Fim'])).filter(Boolean);
+    const dataInicioProjeto = datasInicioTarefas.length ? new Date(Math.min(...datasInicioTarefas)) : null;
+    const dataFimProjeto = datasFimTarefas.length ? new Date(Math.max(...datasFimTarefas)) : null;
+    let pctPrazoConsumido = null, desvioRitmo = null;
+    if(dataInicioProjeto && dataFimProjeto && dataFimProjeto > dataInicioProjeto){
+      const duracaoTotal = diasEntre(dataFimProjeto, dataInicioProjeto);
+      const decorridos = Math.min(Math.max(diasEntre(now, dataInicioProjeto), 0), duracaoTotal);
+      pctPrazoConsumido = Math.round(decorridos/duracaoTotal*100);
+      desvioRitmo = pctPrazoConsumido - pct(nConcluido, total); // >0 = prazo avançando mais rápido que a execução
+    }
+
+    // "Em risco" = vencimento iminente OU desvio de ritmo além da tolerância (RN11), desde que ainda não esteja
+    // atrasado nem concluído. O "OU" é de propósito: pega tanto quem tem tarefa vencendo perto quanto quem tem
+    // prazo folgado mas já está muito atrás do ritmo esperado — sem exigir os dois sinais ao mesmo tempo, já que
+    // desvioRitmo fica null pra boa parte da carteira (depende de "Data Início" preenchida nas tarefas).
+    const emRisco = (vencimentoIminente || (desvioRitmo !== null && desvioRitmo > DESVIO_RITMO_LIMITE))
+      && status !== 'atraso' && status !== 'concluido';
+
+    const projBase = {
+      nome, cards, total, nInicio, nAndamento, nAtraso, nConcluido, status,
+      ultimaAtividade, diasSemAtualizacao, semAtualizacao, semResponsavel, semPrazo,
+      tarefasAtrasadas, semTAP, gestor: gestor || '(não informado)', objetivoEstrategico,
+      semMetaMensuravel, vencimentoIminente, diasParaVencer, emRisco,
+      investimentoEstimado: tap ? (tap['Investimento Estimado (R$)']||'') : '',
+      indicadorSucesso: tap ? (tap['Indicador de Sucesso (texto)']||'') : '',
+      tapExiste: !!tap,
+      tapInicioDate: tap ? parseDateBR(tap['Data de Início']) : null,
+      tapTerminoDate: tap ? parseDateBR(tap['Data de Término']) : null,
+      dataInicioProjeto, dataFimProjeto, pctPrazoConsumido, desvioRitmo
+    };
+    const governancaIndice = calcGovernanca(projBase);
+    const saude = calcSaude(projBase, governancaIndice);
+    return { ...projBase, governancaIndice, saude };
+  });
+}
+
+// ===================== RENDER =====================
+
+let PROJETOS = [];
+let charts = {};
+
+function destroyCharts(){ Object.values(charts).forEach(c=>c && c.destroy()); charts = {}; }
+
+function pct(n, total){ return total ? Math.round(n/total*100) : 0; }
+
+function renderTela1(p){
+  const total = p.length;
+  const andamento = p.filter(x=>x.status==='andamento').length;
+  const atraso = p.filter(x=>x.status==='atraso').length;
+  const concluido = p.filter(x=>x.status==='concluido').length;
+  const naoIniciado = p.filter(x=>x.status==='naoiniciado').length;
+  const semAtualizacao = p.filter(x=>x.semAtualizacao).length;
+  const emRisco = p.filter(x=>x.emRisco).length;
+
+  const criticos = p.filter(x=>x.status==='atraso')
+    .sort((a,b)=> (b.tarefasAtrasadas.length - a.tarefasAtrasadas.length))
+    .slice(0,5);
+
+  const gestorCount = {};
+  p.forEach(x => gestorCount[x.gestor] = (gestorCount[x.gestor]||0)+1);
+  const topGestores = Object.entries(gestorCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  const objCount = {};
+  let semTAPCount = 0;
+  p.forEach(x=>{
+    if(!x.objetivoEstrategico){ semTAPCount++; return; }
+    x.objetivoEstrategico.split(',').map(s=>s.trim()).forEach(o=> objCount[o] = (objCount[o]||0)+1);
+  });
+
+  const nSaudavel = p.filter(x=>x.saude.classe==='saudavel').length;
+  const nAtencao = p.filter(x=>x.saude.classe==='atencao').length;
+  const nCritico = p.filter(x=>x.saude.classe==='critico').length;
+
+  // Seção 16 — indicadores corporativos em %, a partir de contagens que já existiam
+  const semTAPRealCount = p.filter(x=>!x.tapExiste).length; // distinto de semTAPCount (proxy por objetivo vazio, usado no doughnut abaixo)
+  const nGestoresDistintos = new Set(p.map(x=>x.gestor)).size;
+  const mediaProjetosPorGestor = nGestoresDistintos ? (total/nGestoresDistintos).toFixed(1) : '0';
+  let tarefasValidas = 0, tarefasComResp = 0, tarefasComPrazo = 0;
+  p.forEach(x=>{
+    x.cards.filter(c=>!isConcluido(c)).forEach(c=>{
+      tarefasValidas++;
+      if(c['Responsável(is)']) tarefasComResp++;
+      if(c['Data Fim']) tarefasComPrazo++;
+    });
+  });
+
+  document.getElementById('mainArea').innerHTML = `
+    <h1>Visão executiva do portfólio</h1>
+    <p class="lede">Dados ao vivo — Trello (execução) + TAP (governança)</p>
+    ${renderFiltros()}
+    <div class="kpi-row" style="grid-template-columns:repeat(7,1fr);">
+      <div class="kpi kpi-click" onclick="filtrarEIr({})"><div class="top"><span class="lbl">Total de projetos</span><span class="icon gray">▦</span></div><div class="val">${total}</div><div class="sub">boards ativos no workspace</div></div>
+      <div class="kpi kpi-click" onclick="filtrarEIr({status:'andamento'})"><div class="top"><span class="lbl">Em andamento</span><span class="icon blue">▶</span></div><div class="val" style="color:var(--blue)">${andamento}</div><div class="sub">${pct(andamento,total)}% da carteira</div></div>
+      <div class="kpi kpi-click" onclick="filtrarEIr({status:'atraso'})"><div class="top"><span class="lbl">Em atraso</span><span class="icon red">⚠</span></div><div class="val" style="color:var(--red)">${atraso}</div><div class="sub">${pct(atraso,total)}% da carteira</div></div>
+      <div class="kpi kpi-click" onclick="filtrarEIr({status:'concluido'})"><div class="top"><span class="lbl">Concluído (lista)</span><span class="icon green">✓</span></div><div class="val" style="color:var(--green)">${concluido}</div><div class="sub">pendente de encerramento formal</div></div>
+      <div class="kpi kpi-click" onclick="filtrarEIr({status:'naoiniciado'})"><div class="top"><span class="lbl">Não iniciados</span><span class="icon orange">◷</span></div><div class="val" style="color:var(--orange)">${naoIniciado}</div><div class="sub">sem execução registrada</div></div>
+      <div class="kpi kpi-click" onclick="filtrarEIr({risco:'sim'})"><div class="top"><span class="lbl">Em risco</span><span class="icon orange">◎</span></div><div class="val" style="color:var(--orange)">${emRisco}</div><div class="sub">${pct(emRisco,total)}% da carteira</div></div>
+      <div class="kpi kpi-click" onclick="filtrarEIr({semAtualizacaoOnly:true})"><div class="top"><span class="lbl">Sem atualização</span><span class="icon gray">⏱</span></div><div class="val">${semAtualizacao}</div><div class="sub">>${SEM_ATUALIZACAO_DIAS} dias sem mover</div></div>
+    </div>
+    <div class="gap-card"><b>Duas ressalvas de método, pra ler os números acima com precisão:</b><br>
+      1) "Concluído" é lido pela lista do Trello — o requisito (RN07) exige encerramento formal, que nenhuma fonte registra hoje.<br>
+      2) "Em risco" (${emRisco} projetos) é aproximado por vencimento em até ${VENCIMENTO_IMINENTE_DIAS} dias OU desvio de ritmo (RN11) acima de ${DESVIO_RITMO_LIMITE} p.p., sempre sem atraso ainda — não há regra de risco validada pelo board.<br>
+      3) O gráfico "Projetos por Setor/Empresa" do protótipo original não entrou: essa dimensão não existe em nenhuma fonte (Trello, TAP ou cadastro auxiliar).<br>
+      4) Indicadores financeiros seguem de fora — só existe "Investimento Estimado" no TAP, e apenas quando preenchido (hoje 1 de 9 TAPs tem esse campo).
+    </div>
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>Saúde do portfólio</h3>
+      <div class="note">RF11/RN14 — score provisório (prazo + execução + governança + atualização); pesos e faixas ainda não validados pelo board (ver painel de Detalhamento para a fórmula por projeto)</div>
+      <div class="kpi-row" style="grid-template-columns:repeat(3,1fr);margin-bottom:0;">
+        <div class="kpi kpi-click" onclick="filtrarEIr({saude:'saudavel'})"><div class="top"><span class="lbl">Saudável</span><span class="icon green">✓</span></div><div class="val" style="color:var(--green)">${nSaudavel}</div><div class="sub">${pct(nSaudavel,total)}% da carteira</div></div>
+        <div class="kpi kpi-click" onclick="filtrarEIr({saude:'atencao'})"><div class="top"><span class="lbl">Atenção</span><span class="icon orange">◷</span></div><div class="val" style="color:var(--orange)">${nAtencao}</div><div class="sub">${pct(nAtencao,total)}% da carteira</div></div>
+        <div class="kpi kpi-click" onclick="filtrarEIr({saude:'critico'})"><div class="top"><span class="lbl">Crítico</span><span class="icon red">⚠</span></div><div class="val" style="color:var(--red)">${nCritico}</div><div class="sub">${pct(nCritico,total)}% da carteira</div></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>Indicadores corporativos (seção 16 do documento)</h3>
+      <div class="note">% de projetos/tarefas calculados sobre a carteira filtrada acima; "resultado/benefício mensurado" fica de fora — depende de RF09/RF10 (indicador numérico), ainda não estruturado.</div>
+      <div class="bar-row"><div class="name">Projetos em risco</div><div class="bar-track"><div class="bar-fill" style="width:${pct(emRisco,total)}%;background:var(--orange);"></div></div><div class="pct">${pct(emRisco,total)}%</div></div>
+      <div class="bar-row"><div class="name">Projetos com TAP válido</div><div class="bar-track"><div class="bar-fill" style="width:${pct(total-semTAPRealCount,total)}%;background:var(--green);"></div></div><div class="pct">${pct(total-semTAPRealCount,total)}%</div></div>
+      <div class="bar-row"><div class="name">Projetos atualizados no período esperado</div><div class="bar-track"><div class="bar-fill" style="width:${pct(total-semAtualizacao,total)}%;background:var(--blue);"></div></div><div class="pct">${pct(total-semAtualizacao,total)}%</div></div>
+      <div class="bar-row"><div class="name">Tarefas com responsável definido</div><div class="bar-track"><div class="bar-fill" style="width:${pct(tarefasComResp,tarefasValidas)}%;background:var(--blue);"></div></div><div class="pct">${pct(tarefasComResp,tarefasValidas)}%</div></div>
+      <div class="bar-row"><div class="name">Tarefas com prazo definido</div><div class="bar-track"><div class="bar-fill" style="width:${pct(tarefasComPrazo,tarefasValidas)}%;background:var(--blue);"></div></div><div class="pct">${pct(tarefasComPrazo,tarefasValidas)}%</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">Quantidade média de projetos por gestor: <b style="color:var(--text);">${mediaProjetosPorGestor}</b> (${nGestoresDistintos} gestores distintos)</div>
+    </div>
+    <div class="grid2">
+      <div class="panel"><h3>Projetos por status</h3><div class="note">Trello — lista do card</div><div class="chart-box"><canvas id="chartStatus"></canvas></div></div>
+      <div class="panel"><h3>Projetos por objetivo estratégico</h3><div class="note">TAP — só classifica quem tem TAP (${semTAPCount}/${total} sem TAP)</div><div class="chart-box"><canvas id="chartObjetivo"></canvas></div></div>
+    </div>
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>Projetos por gestor</h3><div class="note">TAP quando existe, senão responsável mais frequente nas tarefas do board</div>
+      <div class="chart-box"><canvas id="chartGestor"></canvas></div>
+    </div>
+    <div class="panel">
+      <h3>Projetos mais críticos (em atraso, por volume de tarefas atrasadas)</h3>
+      <table><tr><th></th><th>Projeto</th><th>Gestor</th><th>Tarefas atrasadas</th></tr>
+      ${criticos.map(c=>`<tr><td style="color:var(--red)">●</td><td>${c.nome}</td><td class="mut">${c.gestor}</td><td style="color:var(--red);font-weight:600;">${c.tarefasAtrasadas.length}</td></tr>`).join('')}
+      </table>
+    </div>
+  `;
+
+  destroyCharts();
+  charts.status = new Chart(document.getElementById('chartStatus'), {
+    type:'bar',
+    data:{ labels:['Em andamento','Em atraso','Concluído (lista)','Não iniciado'],
+      datasets:[{ data:[andamento,atraso,concluido,naoIniciado], backgroundColor:['#5B7FE8','#E15A5A','#3FA873','#B8BEC9'], borderRadius:4, barThickness:26 }]},
+    options:{ indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{grid:{color:'#EEF0F3'}},y:{grid:{display:false}}} }
+  });
+
+  const objLabels = Object.keys(objCount);
+  const objValues = Object.values(objCount);
+  charts.objetivo = new Chart(document.getElementById('chartObjetivo'), {
+    type:'doughnut',
+    data:{ labels:[...objLabels, 'Sem TAP / não classificado'],
+      datasets:[{ data:[...objValues, semTAPCount], backgroundColor:['#E08A2C','#5B7FE8','#3FA873','#9B7FE8','#E15A5A','#F5B971','#7FB3E8','#E4E7EC'] }]},
+    options:{ plugins:{legend:{position:'right',labels:{boxWidth:10,font:{size:9.5}}}} }
+  });
+
+  charts.gestor = new Chart(document.getElementById('chartGestor'), {
+    type:'bar',
+    data:{ labels: topGestores.map(g=>g[0]), datasets:[{ data: topGestores.map(g=>g[1]), backgroundColor:'#E08A2C', borderRadius:4 }]},
+    options:{ plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}},y:{grid:{color:'#EEF0F3'}}} }
+  });
+  wireFiltros();
+}
+
+function renderTela2(p){
+  const total = p.length;
+  const semTAP = p.filter(x=>x.semTAP).length;
+  const semResponsavel = p.filter(x=>x.semResponsavel).length;
+  const semPrazo = p.filter(x=>x.semPrazo).length;
+  const semAtualizacao = p.filter(x=>x.semAtualizacao).length;
+  const comTarefasAtrasadas = p.filter(x=>x.tarefasAtrasadas.length>0).length;
+  const vencimentoIminente = p.filter(x=>x.vencimentoIminente).length;
+  const semMeta = p.filter(x=>x.semMetaMensuravel).length;
+  // 8.2 — dois cards do documento que faltavam: "TAP com quadro ativo" e "sem prazo final"
+  const tapComQuadroAtivo = p.filter(x=>x.tapExiste && x.total>0).length;
+  const semPrazoFinal = p.filter(x=>!x.tapTerminoDate && !x.dataFimProjeto).length;
+
+  const porGestor = {};
+  p.forEach(x=>{
+    if(!porGestor[x.gestor]) porGestor[x.gestor] = { projetos:0, atrasados:0, emRisco:0, tarefasAtrasadas:0, semAtualizacao:0, execSum:0 };
+    const g = porGestor[x.gestor];
+    g.projetos++;
+    if(x.status==='atraso') g.atrasados++;
+    if(x.emRisco) g.emRisco++;
+    g.tarefasAtrasadas += x.tarefasAtrasadas.length;
+    if(x.semAtualizacao) g.semAtualizacao++;
+    g.execSum += pct(x.nConcluido, x.total);
+  });
+  const linhasGestor = Object.entries(porGestor).sort((a,b)=>b[1].projetos-a[1].projetos);
+
+  const govMedio = total ? Math.round(p.reduce((s,x)=>s+x.governancaIndice,0)/total) : 0;
+
+  document.getElementById('mainArea').innerHTML = `
+    <h1>Análise gerencial e governança</h1>
+    <p class="lede">Trello + TAP — sem dependência de dado financeiro</p>
+    ${renderFiltros()}
+    <div class="gov-grid">
+      <div class="gov-card"><div class="val" style="color:var(--red)">${semTAP}</div><div class="lbl">Projetos sem TAP</div></div>
+      <div class="gov-card"><div class="val">${tapComQuadroAtivo}</div><div class="lbl">TAP com quadro ativo no Trello</div></div>
+      <div class="gov-card"><div class="val">${semPrazoFinal}</div><div class="lbl">Sem prazo final (nem TAP nem tarefa)</div></div>
+      <div class="gov-card"><div class="val">${semResponsavel}</div><div class="lbl">Com tarefas sem responsável</div></div>
+      <div class="gov-card"><div class="val">${semPrazo}</div><div class="lbl">Com tarefas sem prazo</div></div>
+      <div class="gov-card"><div class="val">${semAtualizacao}</div><div class="lbl">Sem atualização recente</div></div>
+      <div class="gov-card"><div class="val">${comTarefasAtrasadas}</div><div class="lbl">Com tarefas atrasadas</div></div>
+      <div class="gov-card"><div class="val">${vencimentoIminente}</div><div class="lbl">Vencimento iminente (≤${VENCIMENTO_IMINENTE_DIAS}d)</div></div>
+      <div class="gov-card"><div class="val" style="color:var(--red)">${semMeta}</div><div class="lbl">Sem meta mensurável</div></div>
+      <div class="gov-card"><div class="val">${total}</div><div class="lbl">Total de projetos</div></div>
+    </div>
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>Índice de aderência à governança</h3>
+      <div class="note">RF12/RN13 — pesos "exemplo" da proposta do documento (seção 8.4), ainda não validados pelo board/PMO</div>
+      <div style="display:flex;align-items:center;gap:22px;margin-bottom:14px;">
+        <div><div style="font-size:26px;font-weight:700;color:var(--orange);">${govMedio}</div><div style="font-size:11px;color:var(--muted);">índice médio da carteira (0-100)</div></div>
+      </div>
+      ${CRITERIOS_GOVERNANCA.map(c=>{
+        const ok = p.filter(x=>c.ok(x)).length;
+        const percent = pct(ok, total);
+        return `<div class="bar-row"><div class="name">${c.label} (peso ${c.peso}%)</div><div class="bar-track"><div class="bar-fill" style="width:${percent}%;background:var(--orange);"></div></div><div class="pct">${percent}%</div></div>`;
+      }).join('')}
+    </div>
+    <div class="panel">
+      <h3>Visão da carteira por gestor</h3>
+      <div class="note">Objetivo: evidenciar carga da carteira e necessidade de apoio ou rebalanceamento — não é ranking</div>
+      <table><tr><th>Gestor</th><th>Projetos</th><th>Atrasados</th><th>Em risco</th><th>Tarefas atrasadas</th><th>Sem atualização</th><th>% médio execução</th></tr>
+      ${linhasGestor.map(([nome,g])=>`<tr><td>${nome}</td><td>${g.projetos}</td><td>${g.atrasados}</td><td>${g.emRisco}</td><td>${g.tarefasAtrasadas}</td><td>${g.semAtualizacao}</td><td>${Math.round(g.execSum/g.projetos)}%</td></tr>`).join('')}
+      </table>
+    </div>
+  `;
+  wireFiltros();
+}
+
+function renderTela3(p, cardIdParam){
+  if(cardIdParam){
+    const proj = p.find(x=>x.nome === cardIdParam);
+    if(proj) return renderDetalhe(proj);
+  }
+  // RF14 — os filtros de drill-down que ainda não têm dropdown próprio (sem atualização/saúde) mostram aqui
+  // qual veio de um clique em card, pra não sumir sem explicação (limpa junto com "Limpar filtros").
+  // "Nível de risco" não entra mais aqui: já tem select próprio na barra de filtros.
+  const filtroOrigemCard = [];
+  if(FILTROS.semAtualizacaoOnly) filtroOrigemCard.push('Sem atualização');
+  if(FILTROS.saude) filtroOrigemCard.push('Saúde: ' + ({saudavel:'Saudável',atencao:'Atenção',critico:'Crítico'}[FILTROS.saude]));
+  document.getElementById('mainArea').innerHTML = `
+    <h1>Detalhamento do projeto</h1>
+    <p class="lede">${p.length} de ${PROJETOS.length} projetos no filtro atual — clique em um para ver o detalhamento</p>
+    ${filtroOrigemCard.length ? `<div class="filter-gap-note" style="background:var(--blue-bg);border-color:var(--blue);color:var(--blue);"><b>Filtro do card clicado:</b> ${filtroOrigemCard.join(', ')} — use "Limpar filtros" pra remover.</div>` : ''}
+    ${renderFiltros()}
+    <div class="panel"><table id="projTable"><tr><th>Projeto</th><th>Gestor</th><th>Status</th><th>Tarefas</th><th>TAP</th></tr></table></div>
+  `;
+  wireFiltros();
+  const tbl = document.getElementById('projTable');
+  p.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).forEach(proj=>{
+    const tr = document.createElement('tr');
+    const tapLabel = proj.tapExiste ? '<span class="tap-sim">SIM</span>' : '<span class="tap-nao">NÃO</span>';
+    const statusLabel = {andamento:'Em andamento', atraso:'Em atraso', concluido:'Concluído (lista)', naoiniciado:'Não iniciado'}[proj.status];
+    tr.innerHTML = `<td style="cursor:pointer;color:var(--blue);font-weight:500;" data-nome="${proj.nome}">${proj.nome}</td><td>${proj.gestor}</td><td><span class="pill ${proj.status}"><span class="dot"></span>${statusLabel}</span></td><td>${proj.nConcluido}/${proj.total}</td><td>${tapLabel}</td>`;
+    tr.querySelector('td').addEventListener('click', ()=>renderDetalhe(proj));
+    tbl.appendChild(tr);
+  });
+}
+
+function renderDetalhe(proj){
+  const statusLabel = {andamento:'Em andamento', atraso:'Em atraso', concluido:'Concluído (lista)', naoiniciado:'Não iniciado'}[proj.status];
+  const evolPct = pct(proj.nConcluido, proj.total);
+
+  document.getElementById('mainArea').innerHTML = `
+    <div class="breadcrumb" id="voltarPortfolio">← Voltar ao portfólio</div>
+    <div class="proj-head">
+      <div><h1 style="margin-bottom:2px;">${proj.nome}</h1></div>
+      <div class="meta">
+        <div><div class="l">Gestor</div><div class="v">${proj.gestor}</div></div>
+        <div><div class="l">Objetivo estratégico</div><div class="v">${proj.objetivoEstrategico || '(sem TAP)'}</div></div>
+        <div><div class="l">Data de início (TAP)</div><div class="v">${proj.tapInicioDate ? proj.tapInicioDate.toLocaleDateString('pt-BR') : '<span class="pending">A definir</span>'}</div></div>
+        <div><div class="l">Data de término (TAP)</div><div class="v">${proj.tapTerminoDate ? proj.tapTerminoDate.toLocaleDateString('pt-BR') : '<span class="pending">A definir</span>'}</div></div>
+        <div><div class="l">Última atividade</div><div class="v">${proj.ultimaAtividade ? proj.ultimaAtividade.toLocaleDateString('pt-BR') : '—'}</div></div>
+        <div><div class="l">Índice de governança</div><div class="v">${proj.governancaIndice}/100</div></div>
+        <div><div class="l">Status</div><span class="pill ${proj.status}"><span class="dot"></span>${statusLabel}</span></div>
+        <div><div class="l">Saúde do projeto</div><span class="pill ${proj.saude.classe}"><span class="dot"></span>${proj.saude.label} (${proj.saude.score})</span></div>
+      </div>
+    </div>
+    <div class="prov-note"><b>Sobre Governança e Saúde:</b> índice de governança usa os pesos "exemplo" do documento (seção 8.4); saúde do projeto usa uma fórmula provisória (prazo 35% + execução 30% + governança 20% + atualização 15%) que exclui "resultado" — RF09/RF10 ainda não têm meta/atual numérico em nenhum projeto. Nenhum dos dois foi validado pelo board/PMO (item 18 do documento).</div>
+    <div class="grid2">
+      <div class="panel">
+        <h3>Evolução física</h3>
+        <div class="note">${proj.nConcluido} de ${proj.total} tarefas concluídas — Trello puro</div>
+        <div style="display:flex;align-items:center;gap:18px;">
+          <div style="height:140px;width:140px;flex-shrink:0;"><canvas id="chartEvol"></canvas></div>
+          <div><div style="font-size:22px;font-weight:700;color:var(--orange);">${evolPct}%</div><div style="font-size:11.5px;color:var(--muted);">de execução física</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Indicador de sucesso (TAP)</h3>
+        <div class="note">${proj.tapExiste ? 'Texto bruto do TAP — não estruturado em meta/atual numérico' : 'Projeto sem TAP — sem indicador cadastrado'}</div>
+        <div style="font-size:12px;line-height:1.5;">${proj.indicadorSucesso || '<span class="pending">Sem indicador cadastrado</span>'}</div>
+        ${proj.investimentoEstimado ? `<div style="margin-top:10px;font-size:12px;"><b>Investimento estimado:</b> R$ ${proj.investimentoEstimado}</div>` : ''}
+      </div>
+    </div>
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>Desvio de ritmo (RN11)</h3>
+      <div class="note">Compara % de prazo consumido (entre a tarefa com início mais antigo e a de fim mais próximo) com o % de execução física. Faixa de tolerância provisória: ±${DESVIO_RITMO_LIMITE} pontos percentuais.</div>
+      ${proj.pctPrazoConsumido===null ? `<div class="pending">Sem datas de início/fim suficientes nas tarefas para calcular.</div>` : `
+        <div class="bar-row"><div class="name">Prazo consumido</div><div class="bar-track"><div class="bar-fill" style="width:${proj.pctPrazoConsumido}%;background:var(--blue);"></div></div><div class="pct">${proj.pctPrazoConsumido}%</div></div>
+        <div class="bar-row"><div class="name">Execução física</div><div class="bar-track"><div class="bar-fill" style="width:${evolPct}%;background:var(--orange);"></div></div><div class="pct">${evolPct}%</div></div>
+        <div style="font-size:12px;margin-top:4px;">
+          ${proj.desvioRitmo > DESVIO_RITMO_LIMITE
+            ? `<span style="color:var(--red);font-weight:600;">⚠ Desvio de ${proj.desvioRitmo} p.p. — prazo avançando mais rápido que a execução.</span>`
+            : `<span class="mut">Desvio de ${proj.desvioRitmo} p.p. — dentro da faixa de tolerância.</span>`}
+        </div>
+      `}
+    </div>
+    <div class="panel">
+      <h3>Tabela de tarefas</h3>
+      <table><tr><th>Tarefa</th><th>Responsável</th><th>Início</th><th>Fim</th><th>Dias até venc.</th><th>Últ. atualização</th><th>Status</th><th>Alerta</th></tr>
+      ${proj.cards.map(c=>{
+        const listaNorm = normLista(c['Lista (Status)']);
+        const pillClass = listaNorm==='CONCLUÍDOS'?'concluido': listaNorm==='ATRASADOS'?'atraso': listaNorm==='EM ANDAMENTO'?'andamento':'naoiniciado';
+        const dataInicioCard = parseDate(c['Data Início']);
+        const dataFimCard = parseDate(c['Data Fim']);
+        const diasVenc = (listaNorm!=='CONCLUÍDOS' && dataFimCard) ? diasEntre(dataFimCard, new Date()) : null;
+        const diasVencLabel = diasVenc===null ? '—' : diasVenc<0 ? `<span style="color:var(--red);">${Math.abs(diasVenc)}d atraso</span>` : `${diasVenc}d`;
+        const ultimaAtCard = parseDate(c['Última Atividade']);
+        const alertas = [];
+        if(!c['Responsável(is)']) alertas.push('<span class="pending">Sem responsável</span>');
+        if(!c['Data Fim']) alertas.push('<span class="pending">Sem prazo</span>');
+        return `<tr><td>${c['Projeto/Tarefa']}</td><td>${c['Responsável(is)']||'<span class="pending">A definir</span>'}</td><td>${dataInicioCard ? dataInicioCard.toLocaleDateString('pt-BR') : '—'}</td><td>${dataFimCard ? dataFimCard.toLocaleDateString('pt-BR') : '—'}</td><td>${diasVencLabel}</td><td class="mut">${ultimaAtCard ? ultimaAtCard.toLocaleDateString('pt-BR') : '—'}</td><td><span class="pill ${pillClass}"><span class="dot"></span>${c['Lista (Status)']}</span></td><td>${alertas.join(' ') || '<span class="mut">—</span>'}</td></tr>`;
+      }).join('')}
+      </table>
+    </div>
+  `;
+  document.getElementById('voltarPortfolio').addEventListener('click', ()=>ativarTela('s3'));
+  new Chart(document.getElementById('chartEvol'), {
+    type:'doughnut',
+    data:{ labels:['Concluídas','Restantes'], datasets:[{ data:[evolPct,100-evolPct], backgroundColor:['#E08A2C','#EEF0F3'], borderWidth:0 }]},
+    options:{ cutout:'72%', plugins:{legend:{display:false}} }
+  });
+}
+
+// 10.1 — "Ação esperada" por tipo de alerta, texto literal do documento
+const ACAO_POR_TIPO = {
+  'Projeto com tarefas vencidas': 'Replanejar ou concluir formalmente.',
+  'Vencimento iminente': 'Revisar pendências e plano de fechamento.',
+  'Sem atualização': 'Cobrar atualização/checkpoint.',
+  'Tarefa atrasada': 'Definir ação corretiva.',
+  'Tarefa sem responsável': 'Atribuir responsável.',
+  'Tarefa sem prazo': 'Definir prazo.',
+  'Sem TAP': 'Formalizar TAP.',
+  'Sem meta mensurável': 'Revisar TAP.',
+  'Desvio de ritmo': 'Replanejar antes do atraso.'
+};
+
+function renderTela4(p){
+  const alertas = [];
+  p.forEach(proj=>{
+    if(proj.status==='atraso'){
+      alertas.push({ criticidade:'critica', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Projeto com tarefas vencidas', detalhe:`${proj.tarefasAtrasadas.length} tarefa(s) atrasada(s)` });
+    }
+    if(proj.vencimentoIminente){
+      alertas.push({ criticidade:'alta', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Vencimento iminente', detalhe:`${proj.diasParaVencer} dia(s)` });
+    }
+    if(proj.semAtualizacao){
+      alertas.push({ criticidade:'alta', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Sem atualização', detalhe: proj.diasSemAtualizacao!==null ? `${proj.diasSemAtualizacao} dias` : 'sem registro' });
+    }
+    // RN11 — desvio de ritmo além da faixa de tolerância (documento, seção 10.1: criticidade Alta)
+    if(proj.desvioRitmo !== null && proj.desvioRitmo > DESVIO_RITMO_LIMITE){
+      alertas.push({ criticidade:'alta', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Desvio de ritmo', detalhe:`${proj.desvioRitmo} p.p. acima da execução` });
+    }
+    if(proj.semTAP){
+      // Corrigido: o documento (seção 10.1) pede criticidade Alta para "Projeto sem TAP", não Média.
+      alertas.push({ criticidade:'alta', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Sem TAP', detalhe:'TAP não encontrado nos anexos' });
+    } else if(proj.semMetaMensuravel){
+      alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Sem meta mensurável', detalhe:'TAP sem indicador de sucesso preenchido' });
+    }
+    // RF13/RF08 — alertas individuais por tarefa (antes só existiam agregados como semResponsavel/semPrazo por projeto)
+    proj.cards.forEach(c=>{
+      if(isConcluido(c)) return;
+      const tarefaNome = c['Projeto/Tarefa'] || '(sem nome)';
+      const dPrazo = parseDate(c['Data Fim']);
+      if(dPrazo && dPrazo < new Date()){
+        alertas.push({ criticidade:'alta', projeto:proj.nome, gestor:proj.gestor, tarefa:tarefaNome, tipo:'Tarefa atrasada', detalhe:`${diasEntre(new Date(), dPrazo)} dia(s) de atraso` });
+      }
+      if(!c['Responsável(is)']){
+        alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tarefa:tarefaNome, tipo:'Tarefa sem responsável', detalhe:'Responsável não atribuído' });
+      }
+      if(!c['Data Fim']){
+        alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tarefa:tarefaNome, tipo:'Tarefa sem prazo', detalhe:'Sem data final definida' });
+      }
+    });
+  });
+  const ordem = { critica:0, alta:1, media:2 };
+  alertas.sort((a,b)=> ordem[a.criticidade]-ordem[b.criticidade]);
+
+  const nCritica = alertas.filter(a=>a.criticidade==='critica').length;
+  const nAlta = alertas.filter(a=>a.criticidade==='alta').length;
+  const nMedia = alertas.filter(a=>a.criticidade==='media').length;
+
+  document.getElementById('mainArea').innerHTML = `
+    <h1>Central de alertas</h1>
+    <p class="lede">Gerados a partir de Trello + TAP — sem alerta de orçamento (sem fonte de dado)</p>
+    ${renderFiltros()}
+    <div class="kpi-row" style="grid-template-columns:repeat(3,1fr);">
+      <div class="kpi"><div class="top"><span class="lbl">Alertas críticos</span><span class="icon red">⚠</span></div><div class="val" style="color:var(--red)">${nCritica}</div></div>
+      <div class="kpi"><div class="top"><span class="lbl">Alertas altos</span><span class="icon orange">◷</span></div><div class="val" style="color:var(--orange)">${nAlta}</div></div>
+      <div class="kpi"><div class="top"><span class="lbl">Alertas médios</span><span class="icon gray">●</span></div><div class="val">${nMedia}</div></div>
+    </div>
+    <div class="panel">
+      <table><tr><th>Criticidade</th><th>Projeto</th><th>Gestor</th><th>Tipo de alerta</th><th>Detalhe</th><th>Tarefa</th><th>Ação necessária</th></tr>
+      ${alertas.slice(0,60).map(a=>`<tr><td><span class="pill ${a.criticidade==='critica'?'critica':a.criticidade==='alta'?'alta':'media'}"><span class="dot"></span>${a.criticidade==='critica'?'Crítica':a.criticidade==='alta'?'Alta':'Média'}</span></td><td>${a.projeto}</td><td>${a.gestor}</td><td>${a.tipo}</td><td>${a.detalhe}</td><td class="mut">${a.tarefa}</td><td class="mut">${ACAO_POR_TIPO[a.tipo]||'—'}</td></tr>`).join('')}
+      </table>
+      ${alertas.length>60 ? `<div class="note" style="margin-top:10px;">Mostrando 60 de ${alertas.length} alertas.</div>` : ''}
+    </div>
+  `;
+  wireFiltros();
+}
+
+const RENDERERS = { s1: renderTela1, s2: renderTela2, s3: renderTela3, s4: renderTela4 };
+
+function ativarTela(id){
+  CURRENT_SCREEN = id;
+  document.querySelectorAll('.rail button').forEach(b=>b.classList.toggle('active', b.dataset.screen===id));
+  RENDERERS[id](aplicarFiltros(PROJETOS));
+}
+
+document.querySelectorAll('.rail button').forEach(btn=>{
+  btn.addEventListener('click', ()=> ativarTela(btn.dataset.screen));
+});
+
+async function init(){
+  try{
+    const [cardRows, tapRows] = await Promise.all([fetchCSV(CARDS_CSV_URL), fetchCSV(TAP_CSV_URL)]);
+    PROJETOS = agregarProjetos(cardRows, tapRows);
+    document.getElementById('footInfo').innerText = `Atualizado agora · ${PROJETOS.length} projetos · ${cardRows.length} tarefas`;
+    ativarTela('s1');
+  } catch(err){
+    document.getElementById('mainArea').innerHTML = `<div class="loading">Erro ao carregar os dados: ${err.message}<br><br>Confira se os links CSV publicados ainda estão ativos.</div>`;
+  }
+}
+init();
+</script>
+</body>
+</html>
