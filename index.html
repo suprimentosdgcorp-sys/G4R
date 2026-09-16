@@ -641,8 +641,8 @@ function renderTela2(p){
       <div class="gov-card gov-click" onclick="filtrarEIr({flag:'semMeta'})"><div class="val" style="color:var(--red)">${semMeta}</div><div class="lbl">Sem meta mensurável</div></div>
     </div>
     <div class="grid2" style="margin-bottom:14px;">
-      <div class="panel"><h3>Projetos por objetivo estratégico</h3><div class="note">TAP — só classifica quem tem TAP (${semTAPCount}/${total} sem TAP). Clique numa fatia pra filtrar.</div><div class="chart-box"><canvas id="chartObjetivo"></canvas></div></div>
-      <div class="panel"><h3>Projetos por gestor</h3><div class="note">TAP quando existe, senão responsável mais frequente nas tarefas do board. Clique numa barra pra filtrar.</div><div class="chart-box"><canvas id="chartGestor"></canvas></div></div>
+      <div class="panel"><h3>Projetos por objetivo estratégico</h3><div class="note">TAP — só classifica quem tem TAP (${semTAPCount}/${total} sem TAP). Clique numa fatia pra filtrar.</div><div class="chart-box" style="height:270px;"><canvas id="chartObjetivo"></canvas></div></div>
+      <div class="panel"><h3>Projetos por gestor</h3><div class="note">TAP quando existe, senão responsável mais frequente nas tarefas do board. Clique numa barra pra filtrar.</div><div class="chart-box" style="height:270px;"><canvas id="chartGestor"></canvas></div></div>
     </div>
     <details class="panel" style="margin-bottom:14px;">
       <summary><h3>Índice de aderência à governança — por projeto (${total})</h3><span class="toggle-ico"></span></summary>
@@ -715,7 +715,9 @@ function renderTela2(p){
     data:{ labels:[...objLabels, 'Sem TAP / não classificado'],
       datasets:[{ data:[...objValues, semTAPCount], backgroundColor:[...objLabels.map((_,i)=>OBJ_PALETTE[i % OBJ_PALETTE.length]), '#B8BEC9'] }]},
     options:{
-      plugins:{legend:{position:'right',labels:{boxWidth:10,font:{size:9.5}}}},
+      // V5 — legenda embaixo em vez de à direita: com muitos objetivos e nomes longos, "à direita" cortava o
+      // texto na coluna estreita do grid2 (ver print do usuário); embaixo, a legenda usa a largura toda do painel.
+      plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:10,font:{size:9.5}}}},
       // V5 — clicável: fatia de objetivo filtra por FILTROS.objetivo; a última fatia ("Sem TAP / não
       // classificado") é a mesma proxy usada pra contá-la (objetivoEstrategico vazio == sem TAP), então cai no filtro "tap:sem".
       onClick:(evt,elements)=>{
