@@ -136,8 +136,8 @@ function parseDateBR(s){
 }
 function diasEntre(a,b){ return Math.round((a-b)/86400000); }
 function normLista(l){ return (l||'').toUpperCase().trim(); }
-function normBool(v){ return String(v||'').trim().toUpperCase()==='TRUE'; }
-function isConcluido(c){ return normBool(c['Concluido']); }
+function normBool(v){ return String(v||'').trim().toUpperCase()==='TRUE'; } // sem uso nesta fonte (schema atual não tem booleano Concluido); mantido por segurança
+function isConcluido(c){ return normLista(c['Lista (Status)']) === 'CONCLUÍDOS'; }
 
 let FILTROS = { projeto:'', gestor:'', status:'', objetivo:'', tap:'', prazo:'', criticos:false, periodoInicio:'', periodoFim:'' };
 let CURRENT_SCREEN = 's1';
@@ -270,7 +270,7 @@ function agregarProjetos(cardRows, tapRows){
 
   const boards = {};
   cardRows.forEach(r => {
-    const nome = r['Nome_Board'];
+    const nome = r['Board'];
     if(!nome) return;
     if(BOARDS_EXCLUIDOS.some(b => b.toLowerCase() === nome.trim().toLowerCase())) return;
     if(!boards[nome]) boards[nome] = [];
@@ -280,33 +280,33 @@ function agregarProjetos(cardRows, tapRows){
   const now = new Date();
 
   return Object.entries(boards).map(([nome, cards]) => {
+    const listas = cards.map(c => normLista(c['Lista (Status)']));
     const total = cards.length;
-    const nConcluido = cards.filter(isConcluido).length;
+    const nInicio = listas.filter(l=>l==='A INICIAR').length;
+    const nAndamento = listas.filter(l=>l==='EM ANDAMENTO').length;
+    const nAtraso = listas.filter(l=>l==='ATRASADOS').length;
+    const nConcluido = listas.filter(l=>l==='CONCLUÍDOS').length;
 
-    const tarefasAtrasadas = cards.filter(c=>{
-      if(isConcluido(c)) return false;
-      const d = parseDate(c['Data_Prevista_Conclusao']);
-      return d && d < now;
-    });
-    const nAtraso = tarefasAtrasadas.length;
+    let status;
+    if(nAtraso>0) status='atraso';
+    else if(total>0 && nConcluido===total) status='concluido';
+    else if(total>0 && nInicio===total) status='naoiniciado';
+    else status='andamento';
 
-    const datasAtividade = cards.map(c=>parseDate(c['Ultima_Atualizacao'])).filter(Boolean);
+    const datasAtividade = cards.map(c=>parseDate(c['Última Atividade'])).filter(Boolean);
     const ultimaAtividade = datasAtividade.length ? new Date(Math.max(...datasAtividade)) : null;
     const diasSemAtualizacao = ultimaAtividade ? diasEntre(now, ultimaAtividade) : null;
     const semAtualizacao = diasSemAtualizacao===null || diasSemAtualizacao > SEM_ATUALIZACAO_DIAS;
 
     const cardsAtivos = cards.filter(c => !isConcluido(c));
-    const semResponsavel = cardsAtivos.some(c => !c['Responsavel']);
-    const semPrazo = cardsAtivos.some(c => !c['Data_Prevista_Conclusao']);
+    const semResponsavel = cardsAtivos.some(c => !c['Responsável(is)']);
+    const semPrazo = cardsAtivos.some(c => !c['Data Fim']);
 
-    // A extração atual (Fato_Trello_Cards) não publica o nome da lista do Trello de forma padronizada entre
-    // boards (Status_Trello é texto livre por board) — então o status do projeto vem direto de RN02-RN04
-    // aplicadas sobre Concluido + Data_Prevista_Conclusao, em vez de contar cards por nome de lista.
-    let status;
-    if(nAtraso>0) status='atraso';
-    else if(total>0 && nConcluido===total) status='concluido';
-    else if(nConcluido===0 && !ultimaAtividade) status='naoiniciado';
-    else status='andamento';
+    const tarefasAtrasadas = cards.filter(c=>{
+      if(isConcluido(c)) return false;
+      const d = parseDate(c['Data Fim']);
+      return d && d < now;
+    });
 
     const tap = tapByBoard[nome];
     const semTAP = !tap;
@@ -314,7 +314,7 @@ function agregarProjetos(cardRows, tapRows){
     let gestor = tap ? (tap['Gestor']||'').trim() : '';
     if(!gestor){
       const freq = {};
-      cardsAtivos.forEach(c => (c['Responsavel']||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(n=>freq[n]=(freq[n]||0)+1));
+      cardsAtivos.forEach(c => (c['Responsável(is)']||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(n=>freq[n]=(freq[n]||0)+1));
       const top = Object.entries(freq).sort((a,b)=>b[1]-a[1])[0];
       gestor = top ? top[0] : '';
     }
@@ -323,18 +323,16 @@ function agregarProjetos(cardRows, tapRows){
     const semMetaMensuravel = !tap || !(tap['Indicador de Sucesso (texto)']||'').trim();
 
     const proximosVencimentos = cardsAtivos
-      .map(c=>parseDate(c['Data_Prevista_Conclusao']))
+      .map(c=>parseDate(c['Data Fim']))
       .filter(d => d && d >= now);
     const proximoPrazo = proximosVencimentos.length ? new Date(Math.min(...proximosVencimentos)) : null;
     const diasParaVencer = proximoPrazo ? diasEntre(proximoPrazo, now) : null;
     const vencimentoIminente = diasParaVencer !== null && diasParaVencer <= VENCIMENTO_IMINENTE_DIAS;
 
     // RN11 — Desvio de ritmo: prazo consumido (data de início mais antiga -> data de fim mais próxima, entre as tarefas)
-    // comparado ao % de execução física. A extração Fato_Trello_Cards NÃO publica data de início por tarefa
-    // (gap de fonte, não de código — ver CONTEXTO.md/RF07) — datasInicioTarefas fica sempre vazio até essa
-    // coluna existir na extração, e o painel de Desvio de Ritmo mostra "sem dados" nesse caso.
-    const datasInicioTarefas = [];
-    const datasFimTarefas = cards.map(c=>parseDate(c['Data_Prevista_Conclusao'])).filter(Boolean);
+    // comparado ao % de execução física.
+    const datasInicioTarefas = cards.map(c=>parseDate(c['Data Início'])).filter(Boolean);
+    const datasFimTarefas = cards.map(c=>parseDate(c['Data Fim'])).filter(Boolean);
     const dataInicioProjeto = datasInicioTarefas.length ? new Date(Math.min(...datasInicioTarefas)) : null;
     const dataFimProjeto = datasFimTarefas.length ? new Date(Math.max(...datasFimTarefas)) : null;
     let pctPrazoConsumido = null, desvioRitmo = null;
@@ -346,7 +344,7 @@ function agregarProjetos(cardRows, tapRows){
     }
 
     const projBase = {
-      nome, cards, total, nAtraso, nConcluido, status,
+      nome, cards, total, nInicio, nAndamento, nAtraso, nConcluido, status,
       ultimaAtividade, diasSemAtualizacao, semAtualizacao, semResponsavel, semPrazo,
       tarefasAtrasadas, semTAP, gestor: gestor || '(não informado)', objetivoEstrategico,
       semMetaMensuravel, vencimentoIminente, diasParaVencer,
@@ -408,8 +406,8 @@ function renderTela1(p){
   p.forEach(x=>{
     x.cards.filter(c=>!isConcluido(c)).forEach(c=>{
       tarefasValidas++;
-      if(c['Responsavel']) tarefasComResp++;
-      if(c['Data_Prevista_Conclusao']) tarefasComPrazo++;
+      if(c['Responsável(is)']) tarefasComResp++;
+      if(c['Data Fim']) tarefasComPrazo++;
     });
   });
 
@@ -632,21 +630,19 @@ function renderDetalhe(proj){
     </div>
     <div class="panel">
       <h3>Tabela de tarefas</h3>
-      <div class="note">Coluna "Início" fica em branco para todas as tarefas: a extração atual (Fato_Trello_Cards) não publica data de início por card — gap de fonte, ver RF07 no CONTEXTO.md.</div>
       <table><tr><th>Tarefa</th><th>Responsável</th><th>Início</th><th>Fim</th><th>Dias até venc.</th><th>Últ. atualização</th><th>Status</th><th>Alerta</th></tr>
       ${proj.cards.map(c=>{
-        const concluida = isConcluido(c);
-        const dataFimCard = parseDate(c['Data_Prevista_Conclusao']);
-        const atrasadaCard = !concluida && dataFimCard && dataFimCard < new Date();
-        const pillClass = concluida ? 'concluido' : atrasadaCard ? 'atraso' : 'andamento';
-        const statusLabelCard = c['Status_Trello'] || (concluida ? 'Concluído' : atrasadaCard ? 'Atrasada' : 'Em andamento');
-        const diasVenc = (!concluida && dataFimCard) ? diasEntre(dataFimCard, new Date()) : null;
+        const listaNorm = normLista(c['Lista (Status)']);
+        const pillClass = listaNorm==='CONCLUÍDOS'?'concluido': listaNorm==='ATRASADOS'?'atraso': listaNorm==='EM ANDAMENTO'?'andamento':'naoiniciado';
+        const dataInicioCard = parseDate(c['Data Início']);
+        const dataFimCard = parseDate(c['Data Fim']);
+        const diasVenc = (listaNorm!=='CONCLUÍDOS' && dataFimCard) ? diasEntre(dataFimCard, new Date()) : null;
         const diasVencLabel = diasVenc===null ? '—' : diasVenc<0 ? `<span style="color:var(--red);">${Math.abs(diasVenc)}d atraso</span>` : `${diasVenc}d`;
-        const ultimaAtCard = parseDate(c['Ultima_Atualizacao']);
+        const ultimaAtCard = parseDate(c['Última Atividade']);
         const alertas = [];
-        if(!c['Responsavel']) alertas.push('<span class="pending">Sem responsável</span>');
-        if(!c['Data_Prevista_Conclusao']) alertas.push('<span class="pending">Sem prazo</span>');
-        return `<tr><td>${c['Nome_Card']}</td><td>${c['Responsavel']||'<span class="pending">A definir</span>'}</td><td>—</td><td>${dataFimCard ? dataFimCard.toLocaleDateString('pt-BR') : '—'}</td><td>${diasVencLabel}</td><td class="mut">${ultimaAtCard ? ultimaAtCard.toLocaleDateString('pt-BR') : '—'}</td><td><span class="pill ${pillClass}"><span class="dot"></span>${statusLabelCard}</span></td><td>${alertas.join(' ') || '<span class="mut">—</span>'}</td></tr>`;
+        if(!c['Responsável(is)']) alertas.push('<span class="pending">Sem responsável</span>');
+        if(!c['Data Fim']) alertas.push('<span class="pending">Sem prazo</span>');
+        return `<tr><td>${c['Projeto/Tarefa']}</td><td>${c['Responsável(is)']||'<span class="pending">A definir</span>'}</td><td>${dataInicioCard ? dataInicioCard.toLocaleDateString('pt-BR') : '—'}</td><td>${dataFimCard ? dataFimCard.toLocaleDateString('pt-BR') : '—'}</td><td>${diasVencLabel}</td><td class="mut">${ultimaAtCard ? ultimaAtCard.toLocaleDateString('pt-BR') : '—'}</td><td><span class="pill ${pillClass}"><span class="dot"></span>${c['Lista (Status)']}</span></td><td>${alertas.join(' ') || '<span class="mut">—</span>'}</td></tr>`;
       }).join('')}
       </table>
     </div>
@@ -697,15 +693,15 @@ function renderTela4(p){
     // RF13/RF08 — alertas individuais por tarefa (antes só existiam agregados como semResponsavel/semPrazo por projeto)
     proj.cards.forEach(c=>{
       if(isConcluido(c)) return;
-      const tarefaNome = c['Nome_Card'] || '(sem nome)';
-      const dPrazo = parseDate(c['Data_Prevista_Conclusao']);
+      const tarefaNome = c['Projeto/Tarefa'] || '(sem nome)';
+      const dPrazo = parseDate(c['Data Fim']);
       if(dPrazo && dPrazo < new Date()){
         alertas.push({ criticidade:'alta', projeto:proj.nome, gestor:proj.gestor, tarefa:tarefaNome, tipo:'Tarefa atrasada', detalhe:`${diasEntre(new Date(), dPrazo)} dia(s) de atraso` });
       }
-      if(!c['Responsavel']){
+      if(!c['Responsável(is)']){
         alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tarefa:tarefaNome, tipo:'Tarefa sem responsável', detalhe:'Responsável não atribuído' });
       }
-      if(!c['Data_Prevista_Conclusao']){
+      if(!c['Data Fim']){
         alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tarefa:tarefaNome, tipo:'Tarefa sem prazo', detalhe:'Sem data final definida' });
       }
     });
