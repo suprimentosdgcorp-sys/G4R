@@ -19,7 +19,7 @@
   *{box-sizing:border-box;}
   body{ margin:0; background:var(--bg); color:var(--text); font-family:var(--sans); font-size:13.5px; }
   .app{ display:flex; min-height:100vh; }
-  .rail{ width:210px; flex-shrink:0; background:var(--card); border-right:1px solid var(--line); padding:18px 0; }
+  .rail{ width:210px; flex-shrink:0; background:var(--card); border-right:1px solid var(--line); padding:18px 0; position:sticky; top:0; align-self:flex-start; height:100vh; overflow-y:auto; }
   .rail .brand{ display:flex; align-items:center; gap:10px; padding:0 18px 18px; border-bottom:1px solid var(--line); margin-bottom:14px; }
   .rail .brand .logo{ width:58px; height:32px; border-radius:7px; background:var(--navy); display:flex; align-items:center; justify-content:center; padding:4px; flex-shrink:0; }
   .rail .brand .logo img{ width:100%; height:100%; object-fit:contain; display:block; }
