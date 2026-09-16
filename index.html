@@ -35,6 +35,8 @@
   .lede{ color:var(--muted); font-size:12.5px; margin:0 0 18px; }
   .kpi-row{ display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:14px; }
   .kpi{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; box-shadow:0 1px 2px rgba(16,24,40,.03); }
+  .kpi-click{ cursor:pointer; transition:box-shadow .12s, border-color .12s; }
+  .kpi-click:hover{ box-shadow:0 3px 10px rgba(16,24,40,.10); border-color:var(--orange); }
   .kpi .top{ display:flex; justify-content:space-between; align-items:flex-start; }
   .kpi .lbl{ font-size:11px; color:var(--muted); font-weight:500; }
   .kpi .icon{ width:22px; height:22px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:12px; }
@@ -139,8 +141,16 @@ function normLista(l){ return (l||'').toUpperCase().trim(); }
 function normBool(v){ return String(v||'').trim().toUpperCase()==='TRUE'; } // sem uso nesta fonte (schema atual não tem booleano Concluido); mantido por segurança
 function isConcluido(c){ return normLista(c['Lista (Status)']) === 'CONCLUÍDOS'; }
 
-let FILTROS = { projeto:'', gestor:'', status:'', objetivo:'', tap:'', prazo:'', criticos:false, periodoInicio:'', periodoFim:'' };
+const FILTROS_PADRAO = { projeto:'', gestor:'', status:'', objetivo:'', tap:'', prazo:'', criticos:false, periodoInicio:'', periodoFim:'', risco:false, semAtualizacaoOnly:false, saude:'' };
+let FILTROS = { ...FILTROS_PADRAO };
 let CURRENT_SCREEN = 's1';
+
+// RF14 — drill-down: um card/gráfico do portfólio define um recorte de filtro e manda pra lista filtrada (Tela 3).
+// Reseta os demais filtros de propósito (é uma nova pergunta "me mostra só isso", não um AND com o que já estava selecionado).
+function filtrarEIr(partial){
+  FILTROS = { ...FILTROS_PADRAO, ...partial };
+  ativarTela('s3');
+}
 
 function aplicarFiltros(lista){
   return lista.filter(p=>{
@@ -157,6 +167,9 @@ function aplicarFiltros(lista){
     if(FILTROS.prazo==='iminente' && !p.vencimentoIminente) return false;
     if(FILTROS.prazo==='emdia' && (p.status==='atraso' || p.vencimentoIminente)) return false;
     if(FILTROS.criticos && !(p.status==='atraso' || p.semAtualizacao)) return false;
+    if(FILTROS.risco && !(p.vencimentoIminente && p.status!=='atraso' && p.status!=='concluido')) return false;
+    if(FILTROS.semAtualizacaoOnly && !p.semAtualizacao) return false;
+    if(FILTROS.saude && p.saude.classe !== FILTROS.saude) return false;
     if((FILTROS.periodoInicio || FILTROS.periodoFim) && p.tapInicioDate && p.tapTerminoDate){
       if(FILTROS.periodoInicio && p.tapTerminoDate < new Date(FILTROS.periodoInicio)) return false;
       if(FILTROS.periodoFim && p.tapInicioDate > new Date(FILTROS.periodoFim)) return false;
@@ -214,7 +227,7 @@ function wireFiltros(){
   document.getElementById('fPeriodoFim').onchange = e=>{ FILTROS.periodoFim=e.target.value; ativarTela(CURRENT_SCREEN); };
   document.getElementById('fCriticos').onchange = e=>{ FILTROS.criticos=e.target.checked; ativarTela(CURRENT_SCREEN); };
   document.getElementById('fLimpar').onclick = ()=>{
-    FILTROS = { projeto:'', gestor:'', status:'', objetivo:'', tap:'', prazo:'', criticos:false, periodoInicio:'', periodoFim:'' };
+    FILTROS = { ...FILTROS_PADRAO };
     ativarTela(CURRENT_SCREEN);
   };
 }
@@ -415,13 +428,14 @@ function renderTela1(p){
     <h1>Visão executiva do portfólio</h1>
     <p class="lede">Dados ao vivo — Trello (execução) + TAP (governança)</p>
     ${renderFiltros()}
-    <div class="kpi-row">
-      <div class="kpi"><div class="top"><span class="lbl">Total de projetos</span><span class="icon gray">▦</span></div><div class="val">${total}</div><div class="sub">boards ativos no workspace</div></div>
-      <div class="kpi"><div class="top"><span class="lbl">Em andamento</span><span class="icon blue">▶</span></div><div class="val" style="color:var(--blue)">${andamento}</div><div class="sub">${pct(andamento,total)}% da carteira</div></div>
-      <div class="kpi"><div class="top"><span class="lbl">Em atraso</span><span class="icon red">⚠</span></div><div class="val" style="color:var(--red)">${atraso}</div><div class="sub">${pct(atraso,total)}% da carteira</div></div>
-      <div class="kpi"><div class="top"><span class="lbl">Concluído (lista)</span><span class="icon green">✓</span></div><div class="val" style="color:var(--green)">${concluido}</div><div class="sub">pendente de encerramento formal</div></div>
-      <div class="kpi"><div class="top"><span class="lbl">Não iniciados</span><span class="icon orange">◷</span></div><div class="val" style="color:var(--orange)">${naoIniciado}</div><div class="sub">sem execução registrada</div></div>
-      <div class="kpi"><div class="top"><span class="lbl">Sem atualização</span><span class="icon gray">⏱</span></div><div class="val">${semAtualizacao}</div><div class="sub">>${SEM_ATUALIZACAO_DIAS} dias sem mover</div></div>
+    <div class="kpi-row" style="grid-template-columns:repeat(7,1fr);">
+      <div class="kpi kpi-click" onclick="filtrarEIr({})"><div class="top"><span class="lbl">Total de projetos</span><span class="icon gray">▦</span></div><div class="val">${total}</div><div class="sub">boards ativos no workspace</div></div>
+      <div class="kpi kpi-click" onclick="filtrarEIr({status:'andamento'})"><div class="top"><span class="lbl">Em andamento</span><span class="icon blue">▶</span></div><div class="val" style="color:var(--blue)">${andamento}</div><div class="sub">${pct(andamento,total)}% da carteira</div></div>
+      <div class="kpi kpi-click" onclick="filtrarEIr({status:'atraso'})"><div class="top"><span class="lbl">Em atraso</span><span class="icon red">⚠</span></div><div class="val" style="color:var(--red)">${atraso}</div><div class="sub">${pct(atraso,total)}% da carteira</div></div>
+      <div class="kpi kpi-click" onclick="filtrarEIr({status:'concluido'})"><div class="top"><span class="lbl">Concluído (lista)</span><span class="icon green">✓</span></div><div class="val" style="color:var(--green)">${concluido}</div><div class="sub">pendente de encerramento formal</div></div>
+      <div class="kpi kpi-click" onclick="filtrarEIr({status:'naoiniciado'})"><div class="top"><span class="lbl">Não iniciados</span><span class="icon orange">◷</span></div><div class="val" style="color:var(--orange)">${naoIniciado}</div><div class="sub">sem execução registrada</div></div>
+      <div class="kpi kpi-click" onclick="filtrarEIr({risco:true})"><div class="top"><span class="lbl">Em risco</span><span class="icon orange">◎</span></div><div class="val" style="color:var(--orange)">${emRisco}</div><div class="sub">${pct(emRisco,total)}% da carteira</div></div>
+      <div class="kpi kpi-click" onclick="filtrarEIr({semAtualizacaoOnly:true})"><div class="top"><span class="lbl">Sem atualização</span><span class="icon gray">⏱</span></div><div class="val">${semAtualizacao}</div><div class="sub">>${SEM_ATUALIZACAO_DIAS} dias sem mover</div></div>
     </div>
     <div class="gap-card"><b>Duas ressalvas de método, pra ler os números acima com precisão:</b><br>
       1) "Concluído" é lido pela lista do Trello — o requisito (RN07) exige encerramento formal, que nenhuma fonte registra hoje.<br>
@@ -433,9 +447,9 @@ function renderTela1(p){
       <h3>Saúde do portfólio</h3>
       <div class="note">RF11/RN14 — score provisório (prazo + execução + governança + atualização); pesos e faixas ainda não validados pelo board (ver painel de Detalhamento para a fórmula por projeto)</div>
       <div class="kpi-row" style="grid-template-columns:repeat(3,1fr);margin-bottom:0;">
-        <div class="kpi"><div class="top"><span class="lbl">Saudável</span><span class="icon green">✓</span></div><div class="val" style="color:var(--green)">${nSaudavel}</div><div class="sub">${pct(nSaudavel,total)}% da carteira</div></div>
-        <div class="kpi"><div class="top"><span class="lbl">Atenção</span><span class="icon orange">◷</span></div><div class="val" style="color:var(--orange)">${nAtencao}</div><div class="sub">${pct(nAtencao,total)}% da carteira</div></div>
-        <div class="kpi"><div class="top"><span class="lbl">Crítico</span><span class="icon red">⚠</span></div><div class="val" style="color:var(--red)">${nCritico}</div><div class="sub">${pct(nCritico,total)}% da carteira</div></div>
+        <div class="kpi kpi-click" onclick="filtrarEIr({saude:'saudavel'})"><div class="top"><span class="lbl">Saudável</span><span class="icon green">✓</span></div><div class="val" style="color:var(--green)">${nSaudavel}</div><div class="sub">${pct(nSaudavel,total)}% da carteira</div></div>
+        <div class="kpi kpi-click" onclick="filtrarEIr({saude:'atencao'})"><div class="top"><span class="lbl">Atenção</span><span class="icon orange">◷</span></div><div class="val" style="color:var(--orange)">${nAtencao}</div><div class="sub">${pct(nAtencao,total)}% da carteira</div></div>
+        <div class="kpi kpi-click" onclick="filtrarEIr({saude:'critico'})"><div class="top"><span class="lbl">Crítico</span><span class="icon red">⚠</span></div><div class="val" style="color:var(--red)">${nCritico}</div><div class="sub">${pct(nCritico,total)}% da carteira</div></div>
       </div>
     </div>
     <div class="panel" style="margin-bottom:14px;">
@@ -561,9 +575,16 @@ function renderTela3(p, cardIdParam){
     const proj = p.find(x=>x.nome === cardIdParam);
     if(proj) return renderDetalhe(proj);
   }
+  // RF14 — os filtros de drill-down (risco/sem atualização/saúde) não têm dropdown próprio, então mostra aqui
+  // qual veio de um clique em card, pra não sumir sem explicação (limpa junto com "Limpar filtros").
+  const filtroOrigemCard = [];
+  if(FILTROS.risco) filtroOrigemCard.push('Em risco');
+  if(FILTROS.semAtualizacaoOnly) filtroOrigemCard.push('Sem atualização');
+  if(FILTROS.saude) filtroOrigemCard.push('Saúde: ' + ({saudavel:'Saudável',atencao:'Atenção',critico:'Crítico'}[FILTROS.saude]));
   document.getElementById('mainArea').innerHTML = `
     <h1>Detalhamento do projeto</h1>
     <p class="lede">${p.length} de ${PROJETOS.length} projetos no filtro atual — clique em um para ver o detalhamento</p>
+    ${filtroOrigemCard.length ? `<div class="filter-gap-note" style="background:var(--blue-bg);border-color:var(--blue);color:var(--blue);"><b>Filtro do card clicado:</b> ${filtroOrigemCard.join(', ')} — use "Limpar filtros" pra remover.</div>` : ''}
     ${renderFiltros()}
     <div class="panel"><table id="projTable"><tr><th>Projeto</th><th>Gestor</th><th>Status</th><th>Tarefas</th><th>TAP</th></tr></table></div>
   `;
