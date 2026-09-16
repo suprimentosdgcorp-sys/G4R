@@ -49,6 +49,20 @@
   .icon.blue{ background:var(--blue-bg); color:var(--blue); } .icon.red{ background:var(--red-bg); color:var(--red); }
   .icon.green{ background:var(--green-bg); color:var(--green); } .icon.orange{ background:var(--orange-bg); color:var(--orange); }
   .icon.gray{ background:#F1F2F4; color:var(--muted); }
+  /* V5 — hero row (Tela 1): 4 métricas-âncora maiores que o resto, pra hierarquia executiva */
+  .kpi-hero{ padding:18px 20px; }
+  .kpi-hero .lbl{ font-size:12px; }
+  .kpi-hero .val{ font-size:32px; margin-top:10px; }
+  .kpi-hero .sub{ font-size:11px; margin-top:4px; }
+  /* V5 — composição da carteira: substitui os 4 cards de status por uma única barra segmentada + legenda */
+  .comp-bar{ display:flex; height:14px; border-radius:7px; overflow:hidden; background:#EEF0F3; margin:12px 0 14px; }
+  .comp-seg{ cursor:pointer; transition:opacity .12s; }
+  .comp-seg:hover{ opacity:.78; }
+  .comp-legend{ display:flex; flex-wrap:wrap; gap:18px 22px; }
+  .comp-item{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text); cursor:pointer; }
+  .comp-item:hover{ text-decoration:underline; }
+  .comp-item .dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .comp-item b{ font-weight:700; }
   .gap-card{ background:#FDF0E1; border:1px dashed var(--orange); border-radius:10px; padding:13px 16px; margin-bottom:18px; font-size:12px; color:#8A5A1C; }
   .gap-card b{ font-weight:700; }
   .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
@@ -465,23 +479,15 @@ function renderTela1(p){
     .sort((a,b)=> (b.tarefasAtrasadas.length - a.tarefasAtrasadas.length))
     .slice(0,5);
 
-  const gestorCount = {};
-  p.forEach(x => gestorCount[x.gestor] = (gestorCount[x.gestor]||0)+1);
-  const topGestores = Object.entries(gestorCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
-
-  const objCount = {};
-  let semTAPCount = 0;
-  p.forEach(x=>{
-    if(!x.objetivoEstrategico){ semTAPCount++; return; }
-    x.objetivoEstrategico.split(',').map(s=>s.trim()).forEach(o=> objCount[o] = (objCount[o]||0)+1);
-  });
-
   const nSaudavel = p.filter(x=>x.saude.classe==='saudavel').length;
   const nAtencao = p.filter(x=>x.saude.classe==='atencao').length;
   const nCritico = p.filter(x=>x.saude.classe==='critico').length;
+  // V5 — score único de saúde do portfólio (média dos scores por projeto), pra virar 1 card-âncora no topo
+  const saudeMedia = total ? Math.round(p.reduce((s,x)=>s+x.saude.score,0)/total) : 0;
+  const saudeMediaClasse = saudeMedia>=75 ? 'green' : saudeMedia>=50 ? 'orange' : 'red';
 
   // Seção 16 — indicadores corporativos em %, a partir de contagens que já existiam
-  const semTAPRealCount = p.filter(x=>!x.tapExiste).length; // distinto de semTAPCount (proxy por objetivo vazio, usado no doughnut abaixo)
+  const semTAPRealCount = p.filter(x=>!x.tapExiste).length; // distinto de semTAPCount (proxy por objetivo vazio, usado só no doughnut da Tela 2)
   const nGestoresDistintos = new Set(p.map(x=>x.gestor)).size;
   const mediaProjetosPorGestor = nGestoresDistintos ? (total/nGestoresDistintos).toFixed(1) : '0';
   let tarefasValidas = 0, tarefasComResp = 0, tarefasComPrazo = 0;
@@ -497,14 +503,27 @@ function renderTela1(p){
     <h1>Visão executiva do portfólio</h1>
     <p class="lede">Dados ao vivo — Trello (execução) + TAP (governança)</p>
     ${renderFiltros()}
-    <div class="kpi-row" style="grid-template-columns:repeat(7,1fr);">
-      <div class="kpi kpi-click" onclick="filtrarEIr({})"><div class="top"><span class="lbl">Total de projetos</span><span class="icon gray">▦</span></div><div class="val">${total}</div><div class="sub">boards ativos no workspace</div></div>
-      <div class="kpi kpi-click" onclick="filtrarEIr({status:'andamento'})"><div class="top"><span class="lbl">Em andamento</span><span class="icon blue">▶</span></div><div class="val" style="color:var(--blue)">${andamento}</div><div class="sub">${pct(andamento,total)}% da carteira</div></div>
-      <div class="kpi kpi-click" onclick="filtrarEIr({status:'atraso'})"><div class="top"><span class="lbl">Em atraso</span><span class="icon red">⚠</span></div><div class="val" style="color:var(--red)">${atraso}</div><div class="sub">${pct(atraso,total)}% da carteira</div></div>
-      <div class="kpi kpi-click" onclick="filtrarEIr({status:'concluido'})"><div class="top"><span class="lbl">Concluído (lista)</span><span class="icon green">✓</span></div><div class="val" style="color:var(--green)">${concluido}</div><div class="sub">pendente de encerramento formal</div></div>
-      <div class="kpi kpi-click" onclick="filtrarEIr({status:'naoiniciado'})"><div class="top"><span class="lbl">Não iniciados</span><span class="icon orange">◷</span></div><div class="val" style="color:var(--orange)">${naoIniciado}</div><div class="sub">sem execução registrada</div></div>
-      <div class="kpi kpi-click" onclick="filtrarEIr({risco:'sim'})"><div class="top"><span class="lbl">Em risco</span><span class="icon orange">◎</span></div><div class="val" style="color:var(--orange)">${emRisco}</div><div class="sub">${pct(emRisco,total)}% da carteira</div></div>
-      <div class="kpi kpi-click" onclick="filtrarEIr({flag:'semAtualizacao'})"><div class="top"><span class="lbl">Sem atualização</span><span class="icon gray">⏱</span></div><div class="val">${semAtualizacao}</div><div class="sub">>${SEM_ATUALIZACAO_DIAS} dias sem mover</div></div>
+    <div class="kpi-row hero" style="grid-template-columns:repeat(4,1fr);">
+      <div class="kpi kpi-hero kpi-click" onclick="filtrarEIr({})"><div class="top"><span class="lbl">Total de projetos</span><span class="icon gray">▦</span></div><div class="val">${total}</div><div class="sub">boards ativos no workspace</div></div>
+      <div class="kpi kpi-hero kpi-click" onclick="filtrarEIr({risco:'sim'})"><div class="top"><span class="lbl">Em risco</span><span class="icon orange">◎</span></div><div class="val" style="color:var(--orange)">${emRisco}</div><div class="sub">${pct(emRisco,total)}% da carteira</div></div>
+      <div class="kpi kpi-hero kpi-click" onclick="filtrarEIr({flag:'semAtualizacao'})"><div class="top"><span class="lbl">Sem atualização</span><span class="icon gray">⏱</span></div><div class="val">${semAtualizacao}</div><div class="sub">>${SEM_ATUALIZACAO_DIAS} dias sem mover</div></div>
+      <div class="kpi kpi-hero"><div class="top"><span class="lbl">Saúde média do portfólio</span><span class="icon ${saudeMediaClasse}">♥</span></div><div class="val" style="color:${govColor(saudeMedia)}">${saudeMedia}</div><div class="sub">${nSaudavel} saudável · ${nAtencao} atenção · ${nCritico} crítico</div></div>
+    </div>
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>Composição da carteira</h3>
+      <div class="note">Clique num segmento ou na legenda pra filtrar a carteira por esse status</div>
+      <div class="comp-bar">
+        <div class="comp-seg" style="width:${pct(andamento,total)}%;background:var(--blue);" title="Em andamento: ${andamento}" onclick="filtrarEIr({status:'andamento'})"></div>
+        <div class="comp-seg" style="width:${pct(atraso,total)}%;background:var(--red);" title="Em atraso: ${atraso}" onclick="filtrarEIr({status:'atraso'})"></div>
+        <div class="comp-seg" style="width:${pct(concluido,total)}%;background:var(--green);" title="Concluído: ${concluido}" onclick="filtrarEIr({status:'concluido'})"></div>
+        <div class="comp-seg" style="width:${pct(naoIniciado,total)}%;background:#B8BEC9;" title="Não iniciado: ${naoIniciado}" onclick="filtrarEIr({status:'naoiniciado'})"></div>
+      </div>
+      <div class="comp-legend">
+        <div class="comp-item" onclick="filtrarEIr({status:'andamento'})"><span class="dot" style="background:var(--blue)"></span>Em andamento <b>${andamento}</b> <span class="mut">(${pct(andamento,total)}%)</span></div>
+        <div class="comp-item" onclick="filtrarEIr({status:'atraso'})"><span class="dot" style="background:var(--red)"></span>Em atraso <b>${atraso}</b> <span class="mut">(${pct(atraso,total)}%)</span></div>
+        <div class="comp-item" onclick="filtrarEIr({status:'concluido'})"><span class="dot" style="background:var(--green)"></span>Concluído (lista) <b>${concluido}</b> <span class="mut">(${pct(concluido,total)}%)</span></div>
+        <div class="comp-item" onclick="filtrarEIr({status:'naoiniciado'})"><span class="dot" style="background:#B8BEC9"></span>Não iniciado <b>${naoIniciado}</b> <span class="mut">(${pct(naoIniciado,total)}%)</span></div>
+      </div>
     </div>
     <div class="gap-card"><b>Duas ressalvas de método, pra ler os números acima com precisão:</b><br>
       1) "Concluído" é lido pela lista do Trello — o requisito (RN07) exige encerramento formal, que nenhuma fonte registra hoje.<br>
@@ -513,7 +532,7 @@ function renderTela1(p){
       4) Indicadores financeiros seguem de fora — só existe "Investimento Estimado" no TAP, e apenas quando preenchido (hoje 1 de 9 TAPs tem esse campo).
     </div>
     <div class="panel" style="margin-bottom:14px;">
-      <h3>Saúde do portfólio</h3>
+      <h3>Saúde do portfólio — detalhamento</h3>
       <div class="note">RF11/RN14 — score provisório (prazo + execução + governança + atualização); pesos e faixas ainda não validados pelo board (ver painel de Detalhamento para a fórmula por projeto)</div>
       <div class="kpi-row" style="grid-template-columns:repeat(3,1fr);margin-bottom:0;">
         <div class="kpi kpi-click" onclick="filtrarEIr({flag:'saudeSaudavel'})"><div class="top"><span class="lbl">Saudável</span><span class="icon green">✓</span></div><div class="val" style="color:var(--green)">${nSaudavel}</div><div class="sub">${pct(nSaudavel,total)}% da carteira</div></div>
@@ -521,24 +540,18 @@ function renderTela1(p){
         <div class="kpi kpi-click" onclick="filtrarEIr({flag:'saudeCritico'})"><div class="top"><span class="lbl">Crítico</span><span class="icon red">⚠</span></div><div class="val" style="color:var(--red)">${nCritico}</div><div class="sub">${pct(nCritico,total)}% da carteira</div></div>
       </div>
     </div>
-    <div class="panel" style="margin-bottom:14px;">
-      <h3>Indicadores corporativos (seção 16 do documento)</h3>
-      <div class="note">% de projetos/tarefas calculados sobre a carteira filtrada acima; "resultado/benefício mensurado" fica de fora — depende de RF09/RF10 (indicador numérico), ainda não estruturado.</div>
-      <div class="bar-row"><div class="name">Projetos em risco</div><div class="bar-track"><div class="bar-fill" style="width:${pct(emRisco,total)}%;background:var(--orange);"></div></div><div class="pct">${pct(emRisco,total)}%</div></div>
-      <div class="bar-row"><div class="name">Projetos com TAP válido</div><div class="bar-track"><div class="bar-fill" style="width:${pct(total-semTAPRealCount,total)}%;background:var(--green);"></div></div><div class="pct">${pct(total-semTAPRealCount,total)}%</div></div>
-      <div class="bar-row"><div class="name">Projetos atualizados no período esperado</div><div class="bar-track"><div class="bar-fill" style="width:${pct(total-semAtualizacao,total)}%;background:var(--blue);"></div></div><div class="pct">${pct(total-semAtualizacao,total)}%</div></div>
-      <div class="bar-row"><div class="name">Tarefas com responsável definido</div><div class="bar-track"><div class="bar-fill" style="width:${pct(tarefasComResp,tarefasValidas)}%;background:var(--blue);"></div></div><div class="pct">${pct(tarefasComResp,tarefasValidas)}%</div></div>
-      <div class="bar-row"><div class="name">Tarefas com prazo definido</div><div class="bar-track"><div class="bar-fill" style="width:${pct(tarefasComPrazo,tarefasValidas)}%;background:var(--blue);"></div></div><div class="pct">${pct(tarefasComPrazo,tarefasValidas)}%</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">Quantidade média de projetos por gestor: <b style="color:var(--text);">${mediaProjetosPorGestor}</b> (${nGestoresDistintos} gestores distintos)</div>
-    </div>
-    <div class="grid2">
-      <div class="panel"><h3>Projetos por status</h3><div class="note">Trello — lista do card</div><div class="chart-box"><canvas id="chartStatus"></canvas></div></div>
-      <div class="panel"><h3>Projetos por objetivo estratégico</h3><div class="note">TAP — só classifica quem tem TAP (${semTAPCount}/${total} sem TAP)</div><div class="chart-box"><canvas id="chartObjetivo"></canvas></div></div>
-    </div>
-    <div class="panel" style="margin-bottom:14px;">
-      <h3>Projetos por gestor</h3><div class="note">TAP quando existe, senão responsável mais frequente nas tarefas do board</div>
-      <div class="chart-box"><canvas id="chartGestor"></canvas></div>
-    </div>
+    <details class="panel" style="margin-bottom:14px;">
+      <summary><h3>Indicadores corporativos (seção 16 do documento)</h3><span class="toggle-ico"></span></summary>
+      <div class="details-body">
+        <div class="note">% de projetos/tarefas calculados sobre a carteira filtrada acima; "resultado/benefício mensurado" fica de fora — depende de RF09/RF10 (indicador numérico), ainda não estruturado.</div>
+        <div class="bar-row"><div class="name">Projetos em risco</div><div class="bar-track"><div class="bar-fill" style="width:${pct(emRisco,total)}%;background:var(--orange);"></div></div><div class="pct">${pct(emRisco,total)}%</div></div>
+        <div class="bar-row"><div class="name">Projetos com TAP válido</div><div class="bar-track"><div class="bar-fill" style="width:${pct(total-semTAPRealCount,total)}%;background:var(--green);"></div></div><div class="pct">${pct(total-semTAPRealCount,total)}%</div></div>
+        <div class="bar-row"><div class="name">Projetos atualizados no período esperado</div><div class="bar-track"><div class="bar-fill" style="width:${pct(total-semAtualizacao,total)}%;background:var(--blue);"></div></div><div class="pct">${pct(total-semAtualizacao,total)}%</div></div>
+        <div class="bar-row"><div class="name">Tarefas com responsável definido</div><div class="bar-track"><div class="bar-fill" style="width:${pct(tarefasComResp,tarefasValidas)}%;background:var(--blue);"></div></div><div class="pct">${pct(tarefasComResp,tarefasValidas)}%</div></div>
+        <div class="bar-row"><div class="name">Tarefas com prazo definido</div><div class="bar-track"><div class="bar-fill" style="width:${pct(tarefasComPrazo,tarefasValidas)}%;background:var(--blue);"></div></div><div class="pct">${pct(tarefasComPrazo,tarefasValidas)}%</div></div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">Quantidade média de projetos por gestor: <b style="color:var(--text);">${mediaProjetosPorGestor}</b> (${nGestoresDistintos} gestores distintos)</div>
+      </div>
+    </details>
     <div class="panel">
       <h3>Projetos mais críticos (em atraso, por volume de tarefas atrasadas)</h3>
       <table><tr><th></th><th>Projeto</th><th>Gestor</th><th>Tarefas atrasadas</th></tr>
@@ -546,29 +559,6 @@ function renderTela1(p){
       </table>
     </div>
   `;
-
-  destroyCharts();
-  charts.status = new Chart(document.getElementById('chartStatus'), {
-    type:'bar',
-    data:{ labels:['Em andamento','Em atraso','Concluído (lista)','Não iniciado'],
-      datasets:[{ data:[andamento,atraso,concluido,naoIniciado], backgroundColor:['#5B7FE8','#E15A5A','#3FA873','#B8BEC9'], borderRadius:4, barThickness:26 }]},
-    options:{ indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{grid:{color:'#EEF0F3'}},y:{grid:{display:false}}} }
-  });
-
-  const objLabels = Object.keys(objCount);
-  const objValues = Object.values(objCount);
-  charts.objetivo = new Chart(document.getElementById('chartObjetivo'), {
-    type:'doughnut',
-    data:{ labels:[...objLabels, 'Sem TAP / não classificado'],
-      datasets:[{ data:[...objValues, semTAPCount], backgroundColor:['#E08A2C','#5B7FE8','#3FA873','#9B7FE8','#E15A5A','#F5B971','#7FB3E8','#E4E7EC'] }]},
-    options:{ plugins:{legend:{position:'right',labels:{boxWidth:10,font:{size:9.5}}}} }
-  });
-
-  charts.gestor = new Chart(document.getElementById('chartGestor'), {
-    type:'bar',
-    data:{ labels: topGestores.map(g=>g[0]), datasets:[{ data: topGestores.map(g=>g[1]), backgroundColor:'#E08A2C', borderRadius:4 }]},
-    options:{ plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}},y:{grid:{color:'#EEF0F3'}}} }
-  });
   wireFiltros();
 }
 
@@ -595,6 +585,16 @@ function renderTela2(p){
   });
   const linhasGestor = Object.entries(porGestor).sort((a,b)=>b[1].length-a[1].length);
 
+  // V5 — "Projetos por objetivo estratégico" e "por gestor" migraram da Tela 1 pra aqui (reforma de layout):
+  // são leitura de distribuição/analista, cabem melhor na tela de análise gerencial do que na visão executiva.
+  const objCount = {};
+  let semTAPCount = 0;
+  p.forEach(x=>{
+    if(!x.objetivoEstrategico){ semTAPCount++; return; }
+    x.objetivoEstrategico.split(',').map(s=>s.trim()).forEach(o=> objCount[o] = (objCount[o]||0)+1);
+  });
+  const topGestores = linhasGestor.slice(0,8).map(([nome,projs])=>[nome,projs.length]);
+
   function categoriaHtml(label, lista, extra){
     return `<details class="categoria-row">
       <summary><span class="toggle-ico small"></span><span>${label} (${lista.length})</span></summary>
@@ -619,6 +619,10 @@ function renderTela2(p){
       <div class="gov-card gov-click" onclick="filtrarEIr({flag:'comTarefasAtrasadas'})"><div class="val">${comTarefasAtrasadas}</div><div class="lbl">Com tarefas atrasadas</div></div>
       <div class="gov-card gov-click" onclick="filtrarEIr({prazo:'iminente'})"><div class="val">${vencimentoIminente}</div><div class="lbl">Vencimento iminente (≤${VENCIMENTO_IMINENTE_DIAS}d)</div></div>
       <div class="gov-card gov-click" onclick="filtrarEIr({flag:'semMeta'})"><div class="val" style="color:var(--red)">${semMeta}</div><div class="lbl">Sem meta mensurável</div></div>
+    </div>
+    <div class="grid2" style="margin-bottom:14px;">
+      <div class="panel"><h3>Projetos por objetivo estratégico</h3><div class="note">TAP — só classifica quem tem TAP (${semTAPCount}/${total} sem TAP)</div><div class="chart-box"><canvas id="chartObjetivo"></canvas></div></div>
+      <div class="panel"><h3>Projetos por gestor</h3><div class="note">TAP quando existe, senão responsável mais frequente nas tarefas do board</div><div class="chart-box"><canvas id="chartGestor"></canvas></div></div>
     </div>
     <details class="panel" style="margin-bottom:14px;">
       <summary><h3>Índice de aderência à governança — por projeto (${total})</h3><span class="toggle-ico"></span></summary>
@@ -674,6 +678,21 @@ function renderTela2(p){
       </div>
     </details>
   `;
+
+  destroyCharts();
+  const objLabels = Object.keys(objCount);
+  const objValues = Object.values(objCount);
+  charts.objetivo = new Chart(document.getElementById('chartObjetivo'), {
+    type:'doughnut',
+    data:{ labels:[...objLabels, 'Sem TAP / não classificado'],
+      datasets:[{ data:[...objValues, semTAPCount], backgroundColor:['#E08A2C','#5B7FE8','#3FA873','#9B7FE8','#E15A5A','#F5B971','#7FB3E8','#E4E7EC'] }]},
+    options:{ plugins:{legend:{position:'right',labels:{boxWidth:10,font:{size:9.5}}}} }
+  });
+  charts.gestor = new Chart(document.getElementById('chartGestor'), {
+    type:'bar',
+    data:{ labels: topGestores.map(g=>g[0]), datasets:[{ data: topGestores.map(g=>g[1]), backgroundColor:'#E08A2C', borderRadius:4 }]},
+    options:{ plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}},y:{grid:{color:'#EEF0F3'}}} }
+  });
   wireFiltros();
 }
 
