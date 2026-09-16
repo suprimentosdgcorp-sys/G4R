@@ -222,7 +222,9 @@ const FLAG_FILTROS = {
   semResponsavel: { label:'Com tarefas sem responsável', teste: p=>p.semResponsavel },
   semPrazoTarefas:{ label:'Com tarefas sem prazo', teste: p=>p.semPrazo },
   comTarefasAtrasadas: { label:'Com tarefas atrasadas', teste: p=>p.tarefasAtrasadas.length>0 },
-  semMeta:        { label:'Sem meta mensurável', teste: p=>p.semMetaMensuravel }
+  semMeta:        { label:'Sem meta mensurável', teste: p=>p.semMetaMensuravel },
+  // RN06 (V5) — TAP existe mas está com campo obrigatório vazio (Gestor e/ou Objetivo Estratégico).
+  tapIncompleto:  { label:'TAP com campo obrigatório vazio', teste: p=>p.tapExiste && p.tapCamposFaltantes.length>0 }
 };
 
 function aplicarFiltros(lista){
@@ -431,6 +433,16 @@ function agregarProjetos(cardRows, tapRows){
     const objetivoEstrategico = tap ? (tap['Objetivo Estratégico']||'').trim() : '';
     const semMetaMensuravel = !tap || !(tap['Indicador de Sucesso (texto)']||'').trim();
 
+    // RN06 (V5) — "sem governança = ausência de TAP OU de campos mínimos obrigatórios". Até aqui só checávamos
+    // "tem TAP ou não"; o campo a campo faltava. Olha o valor BRUTO do TAP (antes do fallback de `gestor` acima
+    // preencher com o responsável mais frequente do Trello) — senão um TAP com Gestor vazio nunca apareceria
+    // como incompleto, porque o fallback já teria escondido a lacuna.
+    const tapCamposFaltantes = [];
+    if(tap){
+      if(!(tap['Gestor']||'').trim()) tapCamposFaltantes.push('Gestor');
+      if(!(tap['Objetivo Estratégico']||'').trim()) tapCamposFaltantes.push('Objetivo Estratégico');
+    }
+
     const proximosVencimentos = cardsAtivos
       .map(c=>parseDate(c['Data Fim']))
       .filter(d => d && d >= now);
@@ -467,6 +479,7 @@ function agregarProjetos(cardRows, tapRows){
       investimentoEstimado: tap ? (tap['Investimento Estimado (R$)']||'') : '',
       indicadorSucesso: tap ? (tap['Indicador de Sucesso (texto)']||'') : '',
       tapExiste: !!tap,
+      tapCamposFaltantes,
       tapInicioDate: tap ? parseDateBR(tap['Data de Início']) : null,
       tapTerminoDate: tap ? parseDateBR(tap['Data de Término']) : null,
       dataInicioProjeto, dataFimProjeto, pctPrazoConsumido, desvioRitmo
@@ -777,6 +790,9 @@ function renderTela3(p, cardIdParam){
 function renderDetalhe(proj){
   const statusLabel = {andamento:'Em andamento', atraso:'Em atraso', concluido:'Concluído (lista)', naoiniciado:'Não iniciado'}[proj.status];
   const evolPct = pct(proj.nConcluido, proj.total);
+  // RF05 (V5) — "detalhar projeto" pede alertas dentro da própria tela, não só na Central de Alertas geral.
+  // Reaproveita a mesma geração de alertas, só que escopada a este projeto.
+  const alertasProjeto = gerarAlertas([proj]).sort((a,b)=> ORDEM_CRITICIDADE[a.criticidade]-ORDEM_CRITICIDADE[b.criticidade]);
 
   document.getElementById('mainArea').innerHTML = `
     <div class="breadcrumb" id="voltarPortfolio">← Voltar ao portfólio</div>
@@ -794,6 +810,15 @@ function renderDetalhe(proj){
       </div>
     </div>
     <div class="prov-note"><b>Sobre Governança e Saúde:</b> índice de governança usa os pesos "exemplo" do documento (seção 8.4); saúde do projeto usa uma fórmula provisória (prazo 35% + execução 30% + governança 20% + atualização 15%) que exclui "resultado" — RF09/RF10 ainda não têm meta/atual numérico em nenhum projeto. Nenhum dos dois foi validado pelo board/PMO (item 18 do documento).</div>
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>Alertas deste projeto${alertasProjeto.length ? ` (${alertasProjeto.length})` : ''}</h3>
+      ${alertasProjeto.length ? `
+        <div class="note">Mesma lógica da Central de Alertas (Tela 4), filtrada só pra este projeto.</div>
+        <table><tr><th>Criticidade</th><th>Tipo de alerta</th><th>Detalhe</th><th>Tarefa</th><th>Ação necessária</th></tr>
+        ${alertasProjeto.map(a=>`<tr><td><span class="pill ${a.criticidade==='critica'?'critica':a.criticidade==='alta'?'alta':'media'}"><span class="dot"></span>${a.criticidade==='critica'?'Crítica':a.criticidade==='alta'?'Alta':'Média'}</span></td><td>${a.tipo}</td><td>${a.detalhe}</td><td class="mut">${a.tarefa}</td><td class="mut">${ACAO_POR_TIPO[a.tipo]||'—'}</td></tr>`).join('')}
+        </table>
+      ` : `<div class="note" style="margin-bottom:0;color:var(--green);">✓ Nenhum alerta ativo para este projeto no momento.</div>`}
+    </div>
     <div class="grid2">
       <div class="panel">
         <h3>Evolução física</h3>
@@ -859,13 +884,18 @@ const ACAO_POR_TIPO = {
   'Tarefa sem responsável': 'Atribuir responsável.',
   'Tarefa sem prazo': 'Definir prazo.',
   'Sem TAP': 'Formalizar TAP.',
+  'TAP incompleto': 'Completar cadastro do TAP.',
   'Sem meta mensurável': 'Revisar TAP.',
   'Desvio de ritmo': 'Replanejar antes do atraso.'
 };
+const ORDEM_CRITICIDADE = { critica:0, alta:1, media:2 };
 
-function renderTela4(p){
+// V5 — geração de alertas extraída pra função própria (antes vivia só dentro de renderTela4), pra poder
+// reaproveitar tanto na Central de Alertas (todos os projetos) quanto no painel de alertas do próprio projeto
+// no Detalhamento (RF05 — "detalhar projeto" pede alertas ali, não só na Central geral).
+function gerarAlertas(projetos){
   const alertas = [];
-  p.forEach(proj=>{
+  projetos.forEach(proj=>{
     if(proj.status==='atraso'){
       alertas.push({ criticidade:'critica', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Projeto com tarefas vencidas', detalhe:`${proj.tarefasAtrasadas.length} tarefa(s) atrasada(s)` });
     }
@@ -882,8 +912,14 @@ function renderTela4(p){
     if(proj.semTAP){
       // Corrigido: o documento (seção 10.1) pede criticidade Alta para "Projeto sem TAP", não Média.
       alertas.push({ criticidade:'alta', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Sem TAP', detalhe:'TAP não encontrado nos anexos' });
-    } else if(proj.semMetaMensuravel){
-      alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Sem meta mensurável', detalhe:'TAP sem indicador de sucesso preenchido' });
+    } else {
+      // RN06 (V5) — "sem governança" também inclui TAP existente com campo obrigatório vazio, não só ausência de TAP.
+      if(proj.tapCamposFaltantes.length>0){
+        alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'TAP incompleto', detalhe:`Campo(s) vazio(s): ${proj.tapCamposFaltantes.join(', ')}` });
+      }
+      if(proj.semMetaMensuravel){
+        alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Sem meta mensurável', detalhe:'TAP sem indicador de sucesso preenchido' });
+      }
     }
     // RF13/RF08 — alertas individuais por tarefa (antes só existiam agregados como semResponsavel/semPrazo por projeto)
     proj.cards.forEach(c=>{
@@ -901,8 +937,12 @@ function renderTela4(p){
       }
     });
   });
-  const ordem = { critica:0, alta:1, media:2 };
-  alertas.sort((a,b)=> ordem[a.criticidade]-ordem[b.criticidade]);
+  return alertas;
+}
+
+function renderTela4(p){
+  const alertas = gerarAlertas(p);
+  alertas.sort((a,b)=> ORDEM_CRITICIDADE[a.criticidade]-ORDEM_CRITICIDADE[b.criticidade]);
 
   const nCritica = alertas.filter(a=>a.criticidade==='critica').length;
   const nAlta = alertas.filter(a=>a.criticidade==='alta').length;
