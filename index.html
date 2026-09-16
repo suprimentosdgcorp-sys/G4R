@@ -602,8 +602,6 @@ function renderTela2(p){
     </details>`;
   }
 
-  const govMedio = total ? Math.round(p.reduce((s,x)=>s+x.governancaIndice,0)/total) : 0;
-
   document.getElementById('mainArea').innerHTML = `
     <h1>Análise gerencial e governança</h1>
     <p class="lede">Trello + TAP — sem dependência de dado financeiro</p>
@@ -620,20 +618,6 @@ function renderTela2(p){
       <div class="gov-card gov-click" onclick="filtrarEIr({prazo:'iminente'})"><div class="val">${vencimentoIminente}</div><div class="lbl">Vencimento iminente (≤${VENCIMENTO_IMINENTE_DIAS}d)</div></div>
       <div class="gov-card gov-click" onclick="filtrarEIr({flag:'semMeta'})"><div class="val" style="color:var(--red)">${semMeta}</div><div class="lbl">Sem meta mensurável</div></div>
     </div>
-    <details class="panel" style="margin-bottom:14px;" open>
-      <summary><h3>Índice de aderência à governança — resumo da carteira</h3><span class="toggle-ico"></span></summary>
-      <div class="details-body">
-        <div class="note">RF12/RN13 — pesos "exemplo" da proposta do documento (seção 8.4), ainda não validados pelo board/PMO. Isto é uma média da carteira inteira; o detalhamento por projeto está no painel abaixo.</div>
-        <div style="display:flex;align-items:center;gap:22px;margin-bottom:14px;">
-          <div><div style="font-size:26px;font-weight:700;color:var(--orange);">${govMedio}</div><div style="font-size:11px;color:var(--muted);">índice médio da carteira (0-100)</div></div>
-        </div>
-        ${CRITERIOS_GOVERNANCA.map(c=>{
-          const ok = p.filter(x=>c.ok(x)).length;
-          const percent = pct(ok, total);
-          return `<div class="bar-row"><div class="name">${c.label} (peso ${c.peso}%)</div><div class="bar-track"><div class="bar-fill" style="width:${percent}%;background:var(--orange);"></div></div><div class="pct">${percent}%</div></div>`;
-        }).join('')}
-      </div>
-    </details>
     <details class="panel" style="margin-bottom:14px;">
       <summary><h3>Índice de aderência à governança — por projeto (${total})</h3><span class="toggle-ico"></span></summary>
       <div class="details-body">
