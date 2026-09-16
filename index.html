@@ -62,7 +62,11 @@
   .pill.naoiniciado{ background:#F1F2F4; color:var(--muted); } .pill.naoiniciado .dot{ background:var(--muted); }
   .pill.critica{ background:var(--red-bg); color:var(--red); } .pill.alta{ background:var(--orange-bg); color:var(--orange); }
   .pill.media{ background:#F1F2F4; color:var(--muted); }
+  .pill.saudavel{ background:var(--green-bg); color:var(--green); } .pill.saudavel .dot{ background:var(--green); }
+  .pill.atencao{ background:var(--orange-bg); color:var(--orange); } .pill.atencao .dot{ background:var(--orange); }
+  .pill.critico{ background:var(--red-bg); color:var(--red); } .pill.critico .dot{ background:var(--red); }
   .tap-sim{ color:var(--green); font-weight:700; font-size:11.5px; } .tap-nao{ color:var(--red); font-weight:700; font-size:11.5px; }
+  .prov-note{ background:#FDF0E1; border:1px dashed var(--orange); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:11px; color:#8A5A1C; }
   .mut{ color:var(--muted); } .pending{ color:var(--orange); font-size:11px; font-style:italic; }
   .bar-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
   .bar-row .name{ width:150px; font-size:11.5px; color:var(--muted); flex-shrink:0; }
@@ -112,6 +116,9 @@ const TAP_CSV_URL   = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQDzive4C
 
 const SEM_ATUALIZACAO_DIAS = 20;
 const VENCIMENTO_IMINENTE_DIAS = 15;
+// RN11 — faixa de tolerância do desvio de ritmo, em pontos percentuais (prazo consumido - execução).
+// O documento (item 18) pede validação do board; valor abaixo é provisório, herdado da mesma lógica de VENCIMENTO_IMINENTE_DIAS.
+const DESVIO_RITMO_LIMITE = 15;
 
 Chart.defaults.color = '#6B7280';
 Chart.defaults.font.family = 'Inter';
@@ -213,6 +220,45 @@ async function fetchCSV(url){
   return Papa.parse(text, { header: true, skipEmptyLines: true }).data;
 }
 
+// RF12/RN13 — Índice de Aderência à Governança (0-100), pesos "exemplo de peso" da seção 8.4 do documento de requisitos.
+// Ainda não validados pelo board/PMO (item 18) — tratar como proposta, não como número final.
+const CRITERIOS_GOVERNANCA = [
+  { chave:'tap', peso:20, label:'TAP cadastrado', ok: p => p.tapExiste },
+  { chave:'objetivo', peso:15, label:'Objetivo e meta mensuráveis', ok: p => !!p.objetivoEstrategico },
+  { chave:'indicadores', peso:15, label:'Indicadores cadastrados', ok: p => !p.semMetaMensuravel },
+  { chave:'respTarefas', peso:15, label:'Tarefas com responsável', ok: p => !p.semResponsavel },
+  { chave:'prazoTarefas', peso:15, label:'Tarefas com prazo', ok: p => !p.semPrazo },
+  { chave:'atualizacao', peso:10, label:'Atualização em dia', ok: p => !p.semAtualizacao },
+  { chave:'prazoProjeto', peso:10, label:'Prazo do projeto definido', ok: p => !!p.tapTerminoDate }
+];
+function calcGovernanca(p){
+  const obtido = CRITERIOS_GOVERNANCA.reduce((s,c)=> s + (c.ok(p) ? c.peso : 0), 0);
+  return Math.round(obtido); // pesos já somam 100
+}
+
+// RF11/RN14 — Saúde do projeto (0-100 -> Saudável/Atenção/Crítico).
+// O documento pede considerar prazo, execução, resultado, governança e atualização, "com pesos parametrizáveis",
+// mas NÃO dá pesos de exemplo (diferente da governança, seção 8.4) nem faixas de corte — ambos são provisórios aqui.
+// "Resultado" fica de fora do cálculo: RF09/RF10 seguem sem indicador estruturado (meta/atual numérico) em nenhum projeto.
+const PESOS_SAUDE = { prazo:0.35, execucao:0.30, governanca:0.20, atualizacao:0.15 };
+function calcSaude(p, governancaIndice){
+  let prazoScore;
+  if(p.status==='atraso') prazoScore = 0;
+  else if(p.vencimentoIminente) prazoScore = 50;
+  else prazoScore = 100;
+  const execScore = pct(p.nConcluido, p.total);
+  const atualizacaoScore = p.semAtualizacao ? 0 : 100;
+  const score = Math.round(
+    prazoScore*PESOS_SAUDE.prazo + execScore*PESOS_SAUDE.execucao +
+    governancaIndice*PESOS_SAUDE.governanca + atualizacaoScore*PESOS_SAUDE.atualizacao
+  );
+  let classe, label;
+  if(score>=75){ classe='saudavel'; label='Saudável'; }
+  else if(score>=50){ classe='atencao'; label='Atenção'; }
+  else { classe='critico'; label='Crítico'; }
+  return { score, classe, label };
+}
+
 function agregarProjetos(cardRows, tapRows){
   const tapByBoard = {};
   tapRows.forEach(r => { if(r['Board']) tapByBoard[r['Board']] = r; });
@@ -277,7 +323,21 @@ function agregarProjetos(cardRows, tapRows){
     const diasParaVencer = proximoPrazo ? diasEntre(proximoPrazo, now) : null;
     const vencimentoIminente = diasParaVencer !== null && diasParaVencer <= VENCIMENTO_IMINENTE_DIAS;
 
-    return {
+    // RN11 — Desvio de ritmo: prazo consumido (data de início mais antiga -> data de fim mais próxima, entre as tarefas)
+    // comparado ao % de execução física. Usa datas das tarefas (não do TAP) porque só 9/38 boards têm TAP com datas.
+    const datasInicioTarefas = cards.map(c=>parseDate(c['Data Início'])).filter(Boolean);
+    const datasFimTarefas = cards.map(c=>parseDate(c['Data Fim'])).filter(Boolean);
+    const dataInicioProjeto = datasInicioTarefas.length ? new Date(Math.min(...datasInicioTarefas)) : null;
+    const dataFimProjeto = datasFimTarefas.length ? new Date(Math.max(...datasFimTarefas)) : null;
+    let pctPrazoConsumido = null, desvioRitmo = null;
+    if(dataInicioProjeto && dataFimProjeto && dataFimProjeto > dataInicioProjeto){
+      const duracaoTotal = diasEntre(dataFimProjeto, dataInicioProjeto);
+      const decorridos = Math.min(Math.max(diasEntre(now, dataInicioProjeto), 0), duracaoTotal);
+      pctPrazoConsumido = Math.round(decorridos/duracaoTotal*100);
+      desvioRitmo = pctPrazoConsumido - pct(nConcluido, total); // >0 = prazo avançando mais rápido que a execução
+    }
+
+    const projBase = {
       nome, cards, total, nInicio, nAndamento, nAtraso, nConcluido, status,
       ultimaAtividade, diasSemAtualizacao, semAtualizacao, semResponsavel, semPrazo,
       tarefasAtrasadas, semTAP, gestor: gestor || '(não informado)', objetivoEstrategico,
@@ -286,8 +346,12 @@ function agregarProjetos(cardRows, tapRows){
       indicadorSucesso: tap ? (tap['Indicador de Sucesso (texto)']||'') : '',
       tapExiste: !!tap,
       tapInicioDate: tap ? parseDateBR(tap['Data de Início']) : null,
-      tapTerminoDate: tap ? parseDateBR(tap['Data de Término']) : null
+      tapTerminoDate: tap ? parseDateBR(tap['Data de Término']) : null,
+      dataInicioProjeto, dataFimProjeto, pctPrazoConsumido, desvioRitmo
     };
+    const governancaIndice = calcGovernanca(projBase);
+    const saude = calcSaude(projBase, governancaIndice);
+    return { ...projBase, governancaIndice, saude };
   });
 }
 
@@ -324,6 +388,10 @@ function renderTela1(p){
     x.objetivoEstrategico.split(',').map(s=>s.trim()).forEach(o=> objCount[o] = (objCount[o]||0)+1);
   });
 
+  const nSaudavel = p.filter(x=>x.saude.classe==='saudavel').length;
+  const nAtencao = p.filter(x=>x.saude.classe==='atencao').length;
+  const nCritico = p.filter(x=>x.saude.classe==='critico').length;
+
   document.getElementById('mainArea').innerHTML = `
     <h1>Visão executiva do portfólio</h1>
     <p class="lede">Dados ao vivo — Trello (execução) + TAP (governança)</p>
@@ -341,6 +409,15 @@ function renderTela1(p){
       2) "Em risco" (${emRisco} projetos) é aproximado por vencimento em até ${VENCIMENTO_IMINENTE_DIAS} dias sem atraso ainda — não há regra de risco validada pelo board.<br>
       3) O gráfico "Projetos por Setor/Empresa" do protótipo original não entrou: essa dimensão não existe em nenhuma fonte (Trello, TAP ou cadastro auxiliar).<br>
       4) Indicadores financeiros seguem de fora — só existe "Investimento Estimado" no TAP, e apenas quando preenchido (hoje 1 de 9 TAPs tem esse campo).
+    </div>
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>Saúde do portfólio</h3>
+      <div class="note">RF11/RN14 — score provisório (prazo + execução + governança + atualização); pesos e faixas ainda não validados pelo board (ver painel de Detalhamento para a fórmula por projeto)</div>
+      <div class="kpi-row" style="grid-template-columns:repeat(3,1fr);margin-bottom:0;">
+        <div class="kpi"><div class="top"><span class="lbl">Saudável</span><span class="icon green">✓</span></div><div class="val" style="color:var(--green)">${nSaudavel}</div><div class="sub">${pct(nSaudavel,total)}% da carteira</div></div>
+        <div class="kpi"><div class="top"><span class="lbl">Atenção</span><span class="icon orange">◷</span></div><div class="val" style="color:var(--orange)">${nAtencao}</div><div class="sub">${pct(nAtencao,total)}% da carteira</div></div>
+        <div class="kpi"><div class="top"><span class="lbl">Crítico</span><span class="icon red">⚠</span></div><div class="val" style="color:var(--red)">${nCritico}</div><div class="sub">${pct(nCritico,total)}% da carteira</div></div>
+      </div>
     </div>
     <div class="grid2">
       <div class="panel"><h3>Projetos por status</h3><div class="note">Trello — lista do card</div><div class="chart-box"><canvas id="chartStatus"></canvas></div></div>
@@ -405,6 +482,8 @@ function renderTela2(p){
   });
   const linhasGestor = Object.entries(porGestor).sort((a,b)=>b[1].projetos-a[1].projetos);
 
+  const govMedio = total ? Math.round(p.reduce((s,x)=>s+x.governancaIndice,0)/total) : 0;
+
   document.getElementById('mainArea').innerHTML = `
     <h1>Análise gerencial e governança</h1>
     <p class="lede">Trello + TAP — sem dependência de dado financeiro</p>
@@ -418,6 +497,18 @@ function renderTela2(p){
       <div class="gov-card"><div class="val">${vencimentoIminente}</div><div class="lbl">Vencimento iminente (≤${VENCIMENTO_IMINENTE_DIAS}d)</div></div>
       <div class="gov-card"><div class="val" style="color:var(--red)">${semMeta}</div><div class="lbl">Sem meta mensurável</div></div>
       <div class="gov-card"><div class="val">${total}</div><div class="lbl">Total de projetos</div></div>
+    </div>
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>Índice de aderência à governança</h3>
+      <div class="note">RF12/RN13 — pesos "exemplo" da proposta do documento (seção 8.4), ainda não validados pelo board/PMO</div>
+      <div style="display:flex;align-items:center;gap:22px;margin-bottom:14px;">
+        <div><div style="font-size:26px;font-weight:700;color:var(--orange);">${govMedio}</div><div style="font-size:11px;color:var(--muted);">índice médio da carteira (0-100)</div></div>
+      </div>
+      ${CRITERIOS_GOVERNANCA.map(c=>{
+        const ok = p.filter(x=>c.ok(x)).length;
+        const percent = pct(ok, total);
+        return `<div class="bar-row"><div class="name">${c.label} (peso ${c.peso}%)</div><div class="bar-track"><div class="bar-fill" style="width:${percent}%;background:var(--orange);"></div></div><div class="pct">${percent}%</div></div>`;
+      }).join('')}
     </div>
     <div class="panel">
       <h3>Visão da carteira por gestor</h3>
@@ -464,10 +555,15 @@ function renderDetalhe(proj){
       <div class="meta">
         <div><div class="l">Gestor</div><div class="v">${proj.gestor}</div></div>
         <div><div class="l">Objetivo estratégico</div><div class="v">${proj.objetivoEstrategico || '(sem TAP)'}</div></div>
+        <div><div class="l">Data de início (TAP)</div><div class="v">${proj.tapInicioDate ? proj.tapInicioDate.toLocaleDateString('pt-BR') : '<span class="pending">A definir</span>'}</div></div>
+        <div><div class="l">Data de término (TAP)</div><div class="v">${proj.tapTerminoDate ? proj.tapTerminoDate.toLocaleDateString('pt-BR') : '<span class="pending">A definir</span>'}</div></div>
         <div><div class="l">Última atividade</div><div class="v">${proj.ultimaAtividade ? proj.ultimaAtividade.toLocaleDateString('pt-BR') : '—'}</div></div>
-        <div><span class="pill ${proj.status}"><span class="dot"></span>${statusLabel}</span></div>
+        <div><div class="l">Índice de governança</div><div class="v">${proj.governancaIndice}/100</div></div>
+        <div><div class="l">Status</div><span class="pill ${proj.status}"><span class="dot"></span>${statusLabel}</span></div>
+        <div><div class="l">Saúde do projeto</div><span class="pill ${proj.saude.classe}"><span class="dot"></span>${proj.saude.label} (${proj.saude.score})</span></div>
       </div>
     </div>
+    <div class="prov-note"><b>Sobre Governança e Saúde:</b> índice de governança usa os pesos "exemplo" do documento (seção 8.4); saúde do projeto usa uma fórmula provisória (prazo 35% + execução 30% + governança 20% + atualização 15%) que exclui "resultado" — RF09/RF10 ainda não têm meta/atual numérico em nenhum projeto. Nenhum dos dois foi validado pelo board/PMO (item 18 do documento).</div>
     <div class="grid2">
       <div class="panel">
         <h3>Evolução física</h3>
@@ -484,16 +580,29 @@ function renderDetalhe(proj){
         ${proj.investimentoEstimado ? `<div style="margin-top:10px;font-size:12px;"><b>Investimento estimado:</b> R$ ${proj.investimentoEstimado}</div>` : ''}
       </div>
     </div>
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>Desvio de ritmo (RN11)</h3>
+      <div class="note">Compara % de prazo consumido (entre a tarefa com início mais antigo e a de fim mais próximo) com o % de execução física. Faixa de tolerância provisória: ±${DESVIO_RITMO_LIMITE} pontos percentuais.</div>
+      ${proj.pctPrazoConsumido===null ? `<div class="pending">Sem datas de início/fim suficientes nas tarefas para calcular.</div>` : `
+        <div class="bar-row"><div class="name">Prazo consumido</div><div class="bar-track"><div class="bar-fill" style="width:${proj.pctPrazoConsumido}%;background:var(--blue);"></div></div><div class="pct">${proj.pctPrazoConsumido}%</div></div>
+        <div class="bar-row"><div class="name">Execução física</div><div class="bar-track"><div class="bar-fill" style="width:${evolPct}%;background:var(--orange);"></div></div><div class="pct">${evolPct}%</div></div>
+        <div style="font-size:12px;margin-top:4px;">
+          ${proj.desvioRitmo > DESVIO_RITMO_LIMITE
+            ? `<span style="color:var(--red);font-weight:600;">⚠ Desvio de ${proj.desvioRitmo} p.p. — prazo avançando mais rápido que a execução.</span>`
+            : `<span class="mut">Desvio de ${proj.desvioRitmo} p.p. — dentro da faixa de tolerância.</span>`}
+        </div>
+      `}
+    </div>
     <div class="panel">
       <h3>Tabela de tarefas</h3>
-      <table><tr><th>Tarefa</th><th>Responsável</th><th>Fim</th><th>Status</th><th>Alerta</th></tr>
+      <table><tr><th>Tarefa</th><th>Responsável</th><th>Início</th><th>Fim</th><th>Status</th><th>Alerta</th></tr>
       ${proj.cards.map(c=>{
         const listaNorm = normLista(c['Lista (Status)']);
         const pillClass = listaNorm==='CONCLUÍDOS'?'concluido': listaNorm==='ATRASADOS'?'atraso': listaNorm==='EM ANDAMENTO'?'andamento':'naoiniciado';
         const alertas = [];
         if(!c['Responsável(is)']) alertas.push('<span class="pending">Sem responsável</span>');
         if(!c['Data Fim']) alertas.push('<span class="pending">Sem prazo</span>');
-        return `<tr><td>${c['Projeto/Tarefa']}</td><td>${c['Responsável(is)']||'<span class="pending">A definir</span>'}</td><td>${c['Data Fim'] ? new Date(c['Data Fim']).toLocaleDateString('pt-BR') : '—'}</td><td><span class="pill ${pillClass}"><span class="dot"></span>${c['Lista (Status)']}</span></td><td>${alertas.join(' ') || '<span class="mut">—</span>'}</td></tr>`;
+        return `<tr><td>${c['Projeto/Tarefa']}</td><td>${c['Responsável(is)']||'<span class="pending">A definir</span>'}</td><td>${c['Data Início'] ? new Date(c['Data Início']).toLocaleDateString('pt-BR') : '—'}</td><td>${c['Data Fim'] ? new Date(c['Data Fim']).toLocaleDateString('pt-BR') : '—'}</td><td><span class="pill ${pillClass}"><span class="dot"></span>${c['Lista (Status)']}</span></td><td>${alertas.join(' ') || '<span class="mut">—</span>'}</td></tr>`;
       }).join('')}
       </table>
     </div>
@@ -510,19 +619,35 @@ function renderTela4(p){
   const alertas = [];
   p.forEach(proj=>{
     if(proj.status==='atraso'){
-      alertas.push({ criticidade:'critica', projeto:proj.nome, gestor:proj.gestor, tipo:'Projeto com tarefas vencidas', detalhe:`${proj.tarefasAtrasadas.length} tarefa(s) atrasada(s)` });
+      alertas.push({ criticidade:'critica', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Projeto com tarefas vencidas', detalhe:`${proj.tarefasAtrasadas.length} tarefa(s) atrasada(s)` });
     }
     if(proj.vencimentoIminente){
-      alertas.push({ criticidade:'alta', projeto:proj.nome, gestor:proj.gestor, tipo:'Vencimento iminente', detalhe:`${proj.diasParaVencer} dia(s)` });
+      alertas.push({ criticidade:'alta', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Vencimento iminente', detalhe:`${proj.diasParaVencer} dia(s)` });
     }
     if(proj.semAtualizacao){
-      alertas.push({ criticidade:'alta', projeto:proj.nome, gestor:proj.gestor, tipo:'Sem atualização', detalhe: proj.diasSemAtualizacao!==null ? `${proj.diasSemAtualizacao} dias` : 'sem registro' });
+      alertas.push({ criticidade:'alta', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Sem atualização', detalhe: proj.diasSemAtualizacao!==null ? `${proj.diasSemAtualizacao} dias` : 'sem registro' });
+    }
+    // RN11 — desvio de ritmo além da faixa de tolerância (documento, seção 10.1: criticidade Alta)
+    if(proj.desvioRitmo !== null && proj.desvioRitmo > DESVIO_RITMO_LIMITE){
+      alertas.push({ criticidade:'alta', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Desvio de ritmo', detalhe:`${proj.desvioRitmo} p.p. acima da execução` });
     }
     if(proj.semTAP){
-      alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tipo:'Sem TAP', detalhe:'TAP não encontrado nos anexos' });
+      // Corrigido: o documento (seção 10.1) pede criticidade Alta para "Projeto sem TAP", não Média.
+      alertas.push({ criticidade:'alta', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Sem TAP', detalhe:'TAP não encontrado nos anexos' });
     } else if(proj.semMetaMensuravel){
-      alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tipo:'Sem meta mensurável', detalhe:'TAP sem indicador de sucesso preenchido' });
+      alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tarefa:'—', tipo:'Sem meta mensurável', detalhe:'TAP sem indicador de sucesso preenchido' });
     }
+    // RF13/RF08 — alertas individuais por tarefa (antes só existiam agregados como semResponsavel/semPrazo por projeto)
+    proj.cards.forEach(c=>{
+      if(normLista(c['Lista (Status)'])==='CONCLUÍDOS') return;
+      const tarefaNome = c['Projeto/Tarefa'] || '(sem nome)';
+      if(!c['Responsável(is)']){
+        alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tarefa:tarefaNome, tipo:'Tarefa sem responsável', detalhe:'Responsável não atribuído' });
+      }
+      if(!c['Data Fim']){
+        alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tarefa:tarefaNome, tipo:'Tarefa sem prazo', detalhe:'Sem data final definida' });
+      }
+    });
   });
   const ordem = { critica:0, alta:1, media:2 };
   alertas.sort((a,b)=> ordem[a.criticidade]-ordem[b.criticidade]);
@@ -541,8 +666,8 @@ function renderTela4(p){
       <div class="kpi"><div class="top"><span class="lbl">Alertas médios</span><span class="icon gray">●</span></div><div class="val">${nMedia}</div></div>
     </div>
     <div class="panel">
-      <table><tr><th>Criticidade</th><th>Projeto</th><th>Gestor</th><th>Tipo de alerta</th><th>Detalhe</th></tr>
-      ${alertas.slice(0,60).map(a=>`<tr><td><span class="pill ${a.criticidade==='critica'?'critica':a.criticidade==='alta'?'alta':'media'}"><span class="dot"></span>${a.criticidade==='critica'?'Crítica':a.criticidade==='alta'?'Alta':'Média'}</span></td><td>${a.projeto}</td><td>${a.gestor}</td><td>${a.tipo}</td><td>${a.detalhe}</td></tr>`).join('')}
+      <table><tr><th>Criticidade</th><th>Projeto</th><th>Gestor</th><th>Tipo de alerta</th><th>Tarefa</th><th>Detalhe</th></tr>
+      ${alertas.slice(0,60).map(a=>`<tr><td><span class="pill ${a.criticidade==='critica'?'critica':a.criticidade==='alta'?'alta':'media'}"><span class="dot"></span>${a.criticidade==='critica'?'Crítica':a.criticidade==='alta'?'Alta':'Média'}</span></td><td>${a.projeto}</td><td>${a.gestor}</td><td>${a.tipo}</td><td class="mut">${a.tarefa}</td><td>${a.detalhe}</td></tr>`).join('')}
       </table>
       ${alertas.length>60 ? `<div class="note" style="margin-top:10px;">Mostrando 60 de ${alertas.length} alertas.</div>` : ''}
     </div>
