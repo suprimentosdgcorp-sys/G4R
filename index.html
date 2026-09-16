@@ -119,6 +119,9 @@ const VENCIMENTO_IMINENTE_DIAS = 15;
 // RN11 — faixa de tolerância do desvio de ritmo, em pontos percentuais (prazo consumido - execução).
 // O documento (item 18) pede validação do board; valor abaixo é provisório, herdado da mesma lógica de VENCIMENTO_IMINENTE_DIAS.
 const DESVIO_RITMO_LIMITE = 15;
+// Boards que aparecem na planilha Dashboard_G4R > Fato_Trello_Cards mas não são projetos do G4R
+// (ex.: "Estudos - DNC" é um quadro pessoal de teste) — nunca devem entrar no portfólio.
+const BOARDS_EXCLUIDOS = ['Estudos - DNC'];
 
 Chart.defaults.color = '#6B7280';
 Chart.defaults.font.family = 'Inter';
@@ -133,6 +136,8 @@ function parseDateBR(s){
 }
 function diasEntre(a,b){ return Math.round((a-b)/86400000); }
 function normLista(l){ return (l||'').toUpperCase().trim(); }
+function normBool(v){ return String(v||'').trim().toUpperCase()==='TRUE'; }
+function isConcluido(c){ return normBool(c['Concluido']); }
 
 let FILTROS = { projeto:'', gestor:'', status:'', objetivo:'', tap:'', prazo:'', criticos:false, periodoInicio:'', periodoFim:'' };
 let CURRENT_SCREEN = 's1';
@@ -265,8 +270,9 @@ function agregarProjetos(cardRows, tapRows){
 
   const boards = {};
   cardRows.forEach(r => {
-    const nome = r['Board'];
+    const nome = r['Nome_Board'];
     if(!nome) return;
+    if(BOARDS_EXCLUIDOS.some(b => b.toLowerCase() === nome.trim().toLowerCase())) return;
     if(!boards[nome]) boards[nome] = [];
     boards[nome].push(r);
   });
@@ -274,33 +280,33 @@ function agregarProjetos(cardRows, tapRows){
   const now = new Date();
 
   return Object.entries(boards).map(([nome, cards]) => {
-    const listas = cards.map(c => normLista(c['Lista (Status)']));
     const total = cards.length;
-    const nInicio = listas.filter(l=>l==='A INICIAR').length;
-    const nAndamento = listas.filter(l=>l==='EM ANDAMENTO').length;
-    const nAtraso = listas.filter(l=>l==='ATRASADOS').length;
-    const nConcluido = listas.filter(l=>l==='CONCLUÍDOS').length;
+    const nConcluido = cards.filter(isConcluido).length;
 
-    let status;
-    if(nAtraso>0) status='atraso';
-    else if(total>0 && nConcluido===total) status='concluido';
-    else if(total>0 && nInicio===total) status='naoiniciado';
-    else status='andamento';
+    const tarefasAtrasadas = cards.filter(c=>{
+      if(isConcluido(c)) return false;
+      const d = parseDate(c['Data_Prevista_Conclusao']);
+      return d && d < now;
+    });
+    const nAtraso = tarefasAtrasadas.length;
 
-    const datasAtividade = cards.map(c=>parseDate(c['Última Atividade'])).filter(Boolean);
+    const datasAtividade = cards.map(c=>parseDate(c['Ultima_Atualizacao'])).filter(Boolean);
     const ultimaAtividade = datasAtividade.length ? new Date(Math.max(...datasAtividade)) : null;
     const diasSemAtualizacao = ultimaAtividade ? diasEntre(now, ultimaAtividade) : null;
     const semAtualizacao = diasSemAtualizacao===null || diasSemAtualizacao > SEM_ATUALIZACAO_DIAS;
 
-    const cardsAtivos = cards.filter(c => normLista(c['Lista (Status)']) !== 'CONCLUÍDOS');
-    const semResponsavel = cardsAtivos.some(c => !c['Responsável(is)']);
-    const semPrazo = cardsAtivos.some(c => !c['Data Fim']);
+    const cardsAtivos = cards.filter(c => !isConcluido(c));
+    const semResponsavel = cardsAtivos.some(c => !c['Responsavel']);
+    const semPrazo = cardsAtivos.some(c => !c['Data_Prevista_Conclusao']);
 
-    const tarefasAtrasadas = cards.filter(c=>{
-      if(normLista(c['Lista (Status)'])==='CONCLUÍDOS') return false;
-      const d = parseDate(c['Data Fim']);
-      return d && d < now;
-    });
+    // A extração atual (Fato_Trello_Cards) não publica o nome da lista do Trello de forma padronizada entre
+    // boards (Status_Trello é texto livre por board) — então o status do projeto vem direto de RN02-RN04
+    // aplicadas sobre Concluido + Data_Prevista_Conclusao, em vez de contar cards por nome de lista.
+    let status;
+    if(nAtraso>0) status='atraso';
+    else if(total>0 && nConcluido===total) status='concluido';
+    else if(nConcluido===0 && !ultimaAtividade) status='naoiniciado';
+    else status='andamento';
 
     const tap = tapByBoard[nome];
     const semTAP = !tap;
@@ -308,7 +314,7 @@ function agregarProjetos(cardRows, tapRows){
     let gestor = tap ? (tap['Gestor']||'').trim() : '';
     if(!gestor){
       const freq = {};
-      cardsAtivos.forEach(c => (c['Responsável(is)']||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(n=>freq[n]=(freq[n]||0)+1));
+      cardsAtivos.forEach(c => (c['Responsavel']||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(n=>freq[n]=(freq[n]||0)+1));
       const top = Object.entries(freq).sort((a,b)=>b[1]-a[1])[0];
       gestor = top ? top[0] : '';
     }
@@ -317,16 +323,18 @@ function agregarProjetos(cardRows, tapRows){
     const semMetaMensuravel = !tap || !(tap['Indicador de Sucesso (texto)']||'').trim();
 
     const proximosVencimentos = cardsAtivos
-      .map(c=>parseDate(c['Data Fim']))
+      .map(c=>parseDate(c['Data_Prevista_Conclusao']))
       .filter(d => d && d >= now);
     const proximoPrazo = proximosVencimentos.length ? new Date(Math.min(...proximosVencimentos)) : null;
     const diasParaVencer = proximoPrazo ? diasEntre(proximoPrazo, now) : null;
     const vencimentoIminente = diasParaVencer !== null && diasParaVencer <= VENCIMENTO_IMINENTE_DIAS;
 
     // RN11 — Desvio de ritmo: prazo consumido (data de início mais antiga -> data de fim mais próxima, entre as tarefas)
-    // comparado ao % de execução física. Usa datas das tarefas (não do TAP) porque só 9/38 boards têm TAP com datas.
-    const datasInicioTarefas = cards.map(c=>parseDate(c['Data Início'])).filter(Boolean);
-    const datasFimTarefas = cards.map(c=>parseDate(c['Data Fim'])).filter(Boolean);
+    // comparado ao % de execução física. A extração Fato_Trello_Cards NÃO publica data de início por tarefa
+    // (gap de fonte, não de código — ver CONTEXTO.md/RF07) — datasInicioTarefas fica sempre vazio até essa
+    // coluna existir na extração, e o painel de Desvio de Ritmo mostra "sem dados" nesse caso.
+    const datasInicioTarefas = [];
+    const datasFimTarefas = cards.map(c=>parseDate(c['Data_Prevista_Conclusao'])).filter(Boolean);
     const dataInicioProjeto = datasInicioTarefas.length ? new Date(Math.min(...datasInicioTarefas)) : null;
     const dataFimProjeto = datasFimTarefas.length ? new Date(Math.max(...datasFimTarefas)) : null;
     let pctPrazoConsumido = null, desvioRitmo = null;
@@ -338,7 +346,7 @@ function agregarProjetos(cardRows, tapRows){
     }
 
     const projBase = {
-      nome, cards, total, nInicio, nAndamento, nAtraso, nConcluido, status,
+      nome, cards, total, nAtraso, nConcluido, status,
       ultimaAtividade, diasSemAtualizacao, semAtualizacao, semResponsavel, semPrazo,
       tarefasAtrasadas, semTAP, gestor: gestor || '(não informado)', objetivoEstrategico,
       semMetaMensuravel, vencimentoIminente, diasParaVencer,
@@ -392,6 +400,19 @@ function renderTela1(p){
   const nAtencao = p.filter(x=>x.saude.classe==='atencao').length;
   const nCritico = p.filter(x=>x.saude.classe==='critico').length;
 
+  // Seção 16 — indicadores corporativos em %, a partir de contagens que já existiam
+  const semTAPRealCount = p.filter(x=>!x.tapExiste).length; // distinto de semTAPCount (proxy por objetivo vazio, usado no doughnut abaixo)
+  const nGestoresDistintos = new Set(p.map(x=>x.gestor)).size;
+  const mediaProjetosPorGestor = nGestoresDistintos ? (total/nGestoresDistintos).toFixed(1) : '0';
+  let tarefasValidas = 0, tarefasComResp = 0, tarefasComPrazo = 0;
+  p.forEach(x=>{
+    x.cards.filter(c=>!isConcluido(c)).forEach(c=>{
+      tarefasValidas++;
+      if(c['Responsavel']) tarefasComResp++;
+      if(c['Data_Prevista_Conclusao']) tarefasComPrazo++;
+    });
+  });
+
   document.getElementById('mainArea').innerHTML = `
     <h1>Visão executiva do portfólio</h1>
     <p class="lede">Dados ao vivo — Trello (execução) + TAP (governança)</p>
@@ -418,6 +439,16 @@ function renderTela1(p){
         <div class="kpi"><div class="top"><span class="lbl">Atenção</span><span class="icon orange">◷</span></div><div class="val" style="color:var(--orange)">${nAtencao}</div><div class="sub">${pct(nAtencao,total)}% da carteira</div></div>
         <div class="kpi"><div class="top"><span class="lbl">Crítico</span><span class="icon red">⚠</span></div><div class="val" style="color:var(--red)">${nCritico}</div><div class="sub">${pct(nCritico,total)}% da carteira</div></div>
       </div>
+    </div>
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>Indicadores corporativos (seção 16 do documento)</h3>
+      <div class="note">% de projetos/tarefas calculados sobre a carteira filtrada acima; "resultado/benefício mensurado" fica de fora — depende de RF09/RF10 (indicador numérico), ainda não estruturado.</div>
+      <div class="bar-row"><div class="name">Projetos em risco</div><div class="bar-track"><div class="bar-fill" style="width:${pct(emRisco,total)}%;background:var(--orange);"></div></div><div class="pct">${pct(emRisco,total)}%</div></div>
+      <div class="bar-row"><div class="name">Projetos com TAP válido</div><div class="bar-track"><div class="bar-fill" style="width:${pct(total-semTAPRealCount,total)}%;background:var(--green);"></div></div><div class="pct">${pct(total-semTAPRealCount,total)}%</div></div>
+      <div class="bar-row"><div class="name">Projetos atualizados no período esperado</div><div class="bar-track"><div class="bar-fill" style="width:${pct(total-semAtualizacao,total)}%;background:var(--blue);"></div></div><div class="pct">${pct(total-semAtualizacao,total)}%</div></div>
+      <div class="bar-row"><div class="name">Tarefas com responsável definido</div><div class="bar-track"><div class="bar-fill" style="width:${pct(tarefasComResp,tarefasValidas)}%;background:var(--blue);"></div></div><div class="pct">${pct(tarefasComResp,tarefasValidas)}%</div></div>
+      <div class="bar-row"><div class="name">Tarefas com prazo definido</div><div class="bar-track"><div class="bar-fill" style="width:${pct(tarefasComPrazo,tarefasValidas)}%;background:var(--blue);"></div></div><div class="pct">${pct(tarefasComPrazo,tarefasValidas)}%</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">Quantidade média de projetos por gestor: <b style="color:var(--text);">${mediaProjetosPorGestor}</b> (${nGestoresDistintos} gestores distintos)</div>
     </div>
     <div class="grid2">
       <div class="panel"><h3>Projetos por status</h3><div class="note">Trello — lista do card</div><div class="chart-box"><canvas id="chartStatus"></canvas></div></div>
@@ -469,13 +500,17 @@ function renderTela2(p){
   const comTarefasAtrasadas = p.filter(x=>x.tarefasAtrasadas.length>0).length;
   const vencimentoIminente = p.filter(x=>x.vencimentoIminente).length;
   const semMeta = p.filter(x=>x.semMetaMensuravel).length;
+  // 8.2 — dois cards do documento que faltavam: "TAP com quadro ativo" e "sem prazo final"
+  const tapComQuadroAtivo = p.filter(x=>x.tapExiste && x.total>0).length;
+  const semPrazoFinal = p.filter(x=>!x.tapTerminoDate && !x.dataFimProjeto).length;
 
   const porGestor = {};
   p.forEach(x=>{
-    if(!porGestor[x.gestor]) porGestor[x.gestor] = { projetos:0, atrasados:0, tarefasAtrasadas:0, semAtualizacao:0, execSum:0 };
+    if(!porGestor[x.gestor]) porGestor[x.gestor] = { projetos:0, atrasados:0, emRisco:0, tarefasAtrasadas:0, semAtualizacao:0, execSum:0 };
     const g = porGestor[x.gestor];
     g.projetos++;
     if(x.status==='atraso') g.atrasados++;
+    if(x.vencimentoIminente && x.status!=='atraso' && x.status!=='concluido') g.emRisco++;
     g.tarefasAtrasadas += x.tarefasAtrasadas.length;
     if(x.semAtualizacao) g.semAtualizacao++;
     g.execSum += pct(x.nConcluido, x.total);
@@ -490,6 +525,8 @@ function renderTela2(p){
     ${renderFiltros()}
     <div class="gov-grid">
       <div class="gov-card"><div class="val" style="color:var(--red)">${semTAP}</div><div class="lbl">Projetos sem TAP</div></div>
+      <div class="gov-card"><div class="val">${tapComQuadroAtivo}</div><div class="lbl">TAP com quadro ativo no Trello</div></div>
+      <div class="gov-card"><div class="val">${semPrazoFinal}</div><div class="lbl">Sem prazo final (nem TAP nem tarefa)</div></div>
       <div class="gov-card"><div class="val">${semResponsavel}</div><div class="lbl">Com tarefas sem responsável</div></div>
       <div class="gov-card"><div class="val">${semPrazo}</div><div class="lbl">Com tarefas sem prazo</div></div>
       <div class="gov-card"><div class="val">${semAtualizacao}</div><div class="lbl">Sem atualização recente</div></div>
@@ -513,8 +550,8 @@ function renderTela2(p){
     <div class="panel">
       <h3>Visão da carteira por gestor</h3>
       <div class="note">Objetivo: evidenciar carga da carteira e necessidade de apoio ou rebalanceamento — não é ranking</div>
-      <table><tr><th>Gestor</th><th>Projetos</th><th>Atrasados</th><th>Tarefas atrasadas</th><th>Sem atualização</th><th>% médio execução</th></tr>
-      ${linhasGestor.map(([nome,g])=>`<tr><td>${nome}</td><td>${g.projetos}</td><td>${g.atrasados}</td><td>${g.tarefasAtrasadas}</td><td>${g.semAtualizacao}</td><td>${Math.round(g.execSum/g.projetos)}%</td></tr>`).join('')}
+      <table><tr><th>Gestor</th><th>Projetos</th><th>Atrasados</th><th>Em risco</th><th>Tarefas atrasadas</th><th>Sem atualização</th><th>% médio execução</th></tr>
+      ${linhasGestor.map(([nome,g])=>`<tr><td>${nome}</td><td>${g.projetos}</td><td>${g.atrasados}</td><td>${g.emRisco}</td><td>${g.tarefasAtrasadas}</td><td>${g.semAtualizacao}</td><td>${Math.round(g.execSum/g.projetos)}%</td></tr>`).join('')}
       </table>
     </div>
   `;
@@ -595,14 +632,21 @@ function renderDetalhe(proj){
     </div>
     <div class="panel">
       <h3>Tabela de tarefas</h3>
-      <table><tr><th>Tarefa</th><th>Responsável</th><th>Início</th><th>Fim</th><th>Status</th><th>Alerta</th></tr>
+      <div class="note">Coluna "Início" fica em branco para todas as tarefas: a extração atual (Fato_Trello_Cards) não publica data de início por card — gap de fonte, ver RF07 no CONTEXTO.md.</div>
+      <table><tr><th>Tarefa</th><th>Responsável</th><th>Início</th><th>Fim</th><th>Dias até venc.</th><th>Últ. atualização</th><th>Status</th><th>Alerta</th></tr>
       ${proj.cards.map(c=>{
-        const listaNorm = normLista(c['Lista (Status)']);
-        const pillClass = listaNorm==='CONCLUÍDOS'?'concluido': listaNorm==='ATRASADOS'?'atraso': listaNorm==='EM ANDAMENTO'?'andamento':'naoiniciado';
+        const concluida = isConcluido(c);
+        const dataFimCard = parseDate(c['Data_Prevista_Conclusao']);
+        const atrasadaCard = !concluida && dataFimCard && dataFimCard < new Date();
+        const pillClass = concluida ? 'concluido' : atrasadaCard ? 'atraso' : 'andamento';
+        const statusLabelCard = c['Status_Trello'] || (concluida ? 'Concluído' : atrasadaCard ? 'Atrasada' : 'Em andamento');
+        const diasVenc = (!concluida && dataFimCard) ? diasEntre(dataFimCard, new Date()) : null;
+        const diasVencLabel = diasVenc===null ? '—' : diasVenc<0 ? `<span style="color:var(--red);">${Math.abs(diasVenc)}d atraso</span>` : `${diasVenc}d`;
+        const ultimaAtCard = parseDate(c['Ultima_Atualizacao']);
         const alertas = [];
-        if(!c['Responsável(is)']) alertas.push('<span class="pending">Sem responsável</span>');
-        if(!c['Data Fim']) alertas.push('<span class="pending">Sem prazo</span>');
-        return `<tr><td>${c['Projeto/Tarefa']}</td><td>${c['Responsável(is)']||'<span class="pending">A definir</span>'}</td><td>${c['Data Início'] ? new Date(c['Data Início']).toLocaleDateString('pt-BR') : '—'}</td><td>${c['Data Fim'] ? new Date(c['Data Fim']).toLocaleDateString('pt-BR') : '—'}</td><td><span class="pill ${pillClass}"><span class="dot"></span>${c['Lista (Status)']}</span></td><td>${alertas.join(' ') || '<span class="mut">—</span>'}</td></tr>`;
+        if(!c['Responsavel']) alertas.push('<span class="pending">Sem responsável</span>');
+        if(!c['Data_Prevista_Conclusao']) alertas.push('<span class="pending">Sem prazo</span>');
+        return `<tr><td>${c['Nome_Card']}</td><td>${c['Responsavel']||'<span class="pending">A definir</span>'}</td><td>—</td><td>${dataFimCard ? dataFimCard.toLocaleDateString('pt-BR') : '—'}</td><td>${diasVencLabel}</td><td class="mut">${ultimaAtCard ? ultimaAtCard.toLocaleDateString('pt-BR') : '—'}</td><td><span class="pill ${pillClass}"><span class="dot"></span>${statusLabelCard}</span></td><td>${alertas.join(' ') || '<span class="mut">—</span>'}</td></tr>`;
       }).join('')}
       </table>
     </div>
@@ -614,6 +658,19 @@ function renderDetalhe(proj){
     options:{ cutout:'72%', plugins:{legend:{display:false}} }
   });
 }
+
+// 10.1 — "Ação esperada" por tipo de alerta, texto literal do documento
+const ACAO_POR_TIPO = {
+  'Projeto com tarefas vencidas': 'Replanejar ou concluir formalmente.',
+  'Vencimento iminente': 'Revisar pendências e plano de fechamento.',
+  'Sem atualização': 'Cobrar atualização/checkpoint.',
+  'Tarefa atrasada': 'Definir ação corretiva.',
+  'Tarefa sem responsável': 'Atribuir responsável.',
+  'Tarefa sem prazo': 'Definir prazo.',
+  'Sem TAP': 'Formalizar TAP.',
+  'Sem meta mensurável': 'Revisar TAP.',
+  'Desvio de ritmo': 'Replanejar antes do atraso.'
+};
 
 function renderTela4(p){
   const alertas = [];
@@ -639,12 +696,16 @@ function renderTela4(p){
     }
     // RF13/RF08 — alertas individuais por tarefa (antes só existiam agregados como semResponsavel/semPrazo por projeto)
     proj.cards.forEach(c=>{
-      if(normLista(c['Lista (Status)'])==='CONCLUÍDOS') return;
-      const tarefaNome = c['Projeto/Tarefa'] || '(sem nome)';
-      if(!c['Responsável(is)']){
+      if(isConcluido(c)) return;
+      const tarefaNome = c['Nome_Card'] || '(sem nome)';
+      const dPrazo = parseDate(c['Data_Prevista_Conclusao']);
+      if(dPrazo && dPrazo < new Date()){
+        alertas.push({ criticidade:'alta', projeto:proj.nome, gestor:proj.gestor, tarefa:tarefaNome, tipo:'Tarefa atrasada', detalhe:`${diasEntre(new Date(), dPrazo)} dia(s) de atraso` });
+      }
+      if(!c['Responsavel']){
         alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tarefa:tarefaNome, tipo:'Tarefa sem responsável', detalhe:'Responsável não atribuído' });
       }
-      if(!c['Data Fim']){
+      if(!c['Data_Prevista_Conclusao']){
         alertas.push({ criticidade:'media', projeto:proj.nome, gestor:proj.gestor, tarefa:tarefaNome, tipo:'Tarefa sem prazo', detalhe:'Sem data final definida' });
       }
     });
@@ -666,8 +727,8 @@ function renderTela4(p){
       <div class="kpi"><div class="top"><span class="lbl">Alertas médios</span><span class="icon gray">●</span></div><div class="val">${nMedia}</div></div>
     </div>
     <div class="panel">
-      <table><tr><th>Criticidade</th><th>Projeto</th><th>Gestor</th><th>Tipo de alerta</th><th>Tarefa</th><th>Detalhe</th></tr>
-      ${alertas.slice(0,60).map(a=>`<tr><td><span class="pill ${a.criticidade==='critica'?'critica':a.criticidade==='alta'?'alta':'media'}"><span class="dot"></span>${a.criticidade==='critica'?'Crítica':a.criticidade==='alta'?'Alta':'Média'}</span></td><td>${a.projeto}</td><td>${a.gestor}</td><td>${a.tipo}</td><td class="mut">${a.tarefa}</td><td>${a.detalhe}</td></tr>`).join('')}
+      <table><tr><th>Criticidade</th><th>Projeto</th><th>Gestor</th><th>Tipo de alerta</th><th>Detalhe</th><th>Tarefa</th><th>Ação necessária</th></tr>
+      ${alertas.slice(0,60).map(a=>`<tr><td><span class="pill ${a.criticidade==='critica'?'critica':a.criticidade==='alta'?'alta':'media'}"><span class="dot"></span>${a.criticidade==='critica'?'Crítica':a.criticidade==='alta'?'Alta':'Média'}</span></td><td>${a.projeto}</td><td>${a.gestor}</td><td>${a.tipo}</td><td>${a.detalhe}</td><td class="mut">${a.tarefa}</td><td class="mut">${ACAO_POR_TIPO[a.tipo]||'—'}</td></tr>`).join('')}
       </table>
       ${alertas.length>60 ? `<div class="note" style="margin-top:10px;">Mostrando 60 de ${alertas.length} alertas.</div>` : ''}
     </div>
