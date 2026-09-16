@@ -54,13 +54,29 @@
   .panel h3{ font-size:13px; font-weight:600; margin:0 0 3px; }
   details.panel{ padding:0; }
   details.panel > summary{ list-style:none; cursor:pointer; padding:16px 18px; display:flex; justify-content:space-between; align-items:center; gap:10px; }
-  details.panel > summary::-webkit-details-marker{ display:none; }
   details.panel > summary h3{ margin:0; }
-  details.panel > summary .toggle-ico{ width:20px; height:20px; border-radius:6px; background:#F1F2F4; color:var(--muted); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; flex-shrink:0; }
-  details.panel[open] > summary .toggle-ico::before{ content:'–'; }
-  details.panel:not([open]) > summary .toggle-ico::before{ content:'+'; }
   details.panel > .details-body{ padding:0 18px 16px; }
-  details.panel > summary:hover .toggle-ico{ background:var(--orange-bg); color:var(--orange); }
+  details > summary{ list-style:none; }
+  details > summary::-webkit-details-marker{ display:none; }
+  details > summary .toggle-ico{ width:20px; height:20px; border-radius:6px; background:#F1F2F4; color:var(--muted); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; flex-shrink:0; }
+  details > summary .toggle-ico.small{ width:16px; height:16px; font-size:12px; border-radius:4px; }
+  details[open] > summary .toggle-ico::before{ content:'–'; }
+  details:not([open]) > summary .toggle-ico::before{ content:'+'; }
+  details > summary:hover .toggle-ico{ background:var(--orange-bg); color:var(--orange); }
+  /* Tabela por gestor com drill-down: gestor -> categoria (atrasados/em risco/...) -> projeto */
+  .gestor-table{ width:100%; font-size:12px; }
+  .gestor-head-row{ display:grid; grid-template-columns:2fr 1fr 1.4fr 1.2fr 1.4fr; gap:8px; padding:0 10px 8px; font-size:10.5px; color:var(--muted); font-weight:500; border-bottom:1px solid var(--line); }
+  details.gestor-row{ border-bottom:1px solid var(--line); }
+  details.gestor-row:last-child{ border-bottom:none; }
+  details.gestor-row > summary{ cursor:pointer; display:grid; grid-template-columns:2fr 1fr 1.4fr 1.2fr 1.4fr; gap:8px; padding:10px; align-items:center; }
+  details.gestor-row > summary .gestor-nome{ display:flex; align-items:center; gap:8px; font-weight:500; }
+  details.gestor-row .gestor-body{ padding:2px 10px 12px 34px; background:#FAFBFC; }
+  details.categoria-row{ margin:3px 0; }
+  details.categoria-row > summary{ cursor:pointer; display:flex; align-items:center; gap:7px; font-size:11.5px; color:var(--muted); padding:4px 0; }
+  .categoria-lista{ margin:2px 0 6px 23px; padding:0; list-style:none; font-size:11.5px; }
+  .categoria-lista li{ padding:3px 0; }
+  .categoria-lista a{ color:var(--blue); cursor:pointer; text-decoration:none; }
+  .categoria-lista a:hover{ text-decoration:underline; }
   .panel .note{ color:var(--muted); font-size:10.5px; margin-bottom:10px; }
   .chart-box{ height:210px; }
   table{ width:100%; border-collapse:collapse; font-size:12px; }
@@ -568,20 +584,23 @@ function renderTela2(p){
   const tapSemQuadroAtivo = p.filter(x=>x.tapExiste && x.total===0).length;
   const semPrazoFinal = p.filter(x=>!x.tapTerminoDate && !x.dataFimProjeto).length;
 
+  // Guarda o projeto inteiro (não só contadores) por gestor — precisa disso pro drill-down de 2º nível
+  // (categoria -> lista de projetos daquela categoria).
   const porGestor = {};
   p.forEach(x=>{
-    if(!porGestor[x.gestor]) porGestor[x.gestor] = { projetos:0, atrasados:0, emRisco:0, tarefasAtrasadas:0, semAtualizacao:0, execSum:0, govSum:0, govCritica:0 };
-    const g = porGestor[x.gestor];
-    g.projetos++;
-    if(x.status==='atraso') g.atrasados++;
-    if(x.emRisco) g.emRisco++;
-    g.tarefasAtrasadas += x.tarefasAtrasadas.length;
-    if(x.semAtualizacao) g.semAtualizacao++;
-    g.execSum += pct(x.nConcluido, x.total);
-    g.govSum += x.governancaIndice;
-    if(x.governancaIndice < 50) g.govCritica++;
+    if(!porGestor[x.gestor]) porGestor[x.gestor] = [];
+    porGestor[x.gestor].push(x);
   });
-  const linhasGestor = Object.entries(porGestor).sort((a,b)=>b[1].projetos-a[1].projetos);
+  const linhasGestor = Object.entries(porGestor).sort((a,b)=>b[1].length-a[1].length);
+
+  function categoriaHtml(label, lista, extra){
+    return `<details class="categoria-row">
+      <summary><span class="toggle-ico small"></span><span>${label} (${lista.length})</span></summary>
+      <ul class="categoria-lista">
+        ${lista.length ? lista.map(pr=>`<li><a onclick="abrirProjeto('${pr.nome.replace(/'/g,"\\'")}')">${pr.nome}</a>${extra ? ` <span class="mut">— ${extra(pr)}</span>` : ''}</li>`).join('') : '<li class="mut">Nenhum projeto</li>'}
+      </ul>
+    </details>`;
+  }
 
   const govMedio = total ? Math.round(p.reduce((s,x)=>s+x.governancaIndice,0)/total) : 0;
 
@@ -637,10 +656,35 @@ function renderTela2(p){
     <details class="panel" open>
       <summary><h3>Visão da carteira por gestor</h3><span class="toggle-ico"></span></summary>
       <div class="details-body">
-        <div class="note">Objetivo: evidenciar carga da carteira e necessidade de apoio ou rebalanceamento — não é ranking</div>
-        <table><tr><th>Gestor</th><th>Projetos</th><th>Atrasados</th><th>Em risco</th><th>Tarefas atrasadas</th><th>Sem atualização</th><th>% médio execução</th><th>Governança média</th><th>Governança crítica (&lt;50)</th></tr>
-        ${linhasGestor.map(([nome,g])=>`<tr><td>${nome}</td><td>${g.projetos}</td><td>${g.atrasados}</td><td>${g.emRisco}</td><td>${g.tarefasAtrasadas}</td><td>${g.semAtualizacao}</td><td>${Math.round(g.execSum/g.projetos)}%</td><td style="font-weight:600;color:${govColor(Math.round(g.govSum/g.projetos))};">${Math.round(g.govSum/g.projetos)}</td><td style="${g.govCritica>0?'color:var(--red);font-weight:700;':''}">${g.govCritica}</td></tr>`).join('')}
-        </table>
+        <div class="note">Objetivo: evidenciar carga da carteira e necessidade de apoio ou rebalanceamento — não é ranking. Clique em "+" pra ver Atrasados/Em risco/Tarefas atrasadas/Sem atualização daquele gestor, e de novo pra ver quais projetos especificamente.</div>
+        <div class="gestor-table">
+          <div class="gestor-head-row"><div>Gestor</div><div>Projetos</div><div>% médio execução</div><div>Governança média</div><div>Governança crítica (&lt;50)</div></div>
+          ${linhasGestor.map(([nome,projs])=>{
+            const nProjetos = projs.length;
+            const execMedio = Math.round(projs.reduce((s,x)=>s+pct(x.nConcluido,x.total),0)/nProjetos);
+            const govMedioG = Math.round(projs.reduce((s,x)=>s+x.governancaIndice,0)/nProjetos);
+            const govCriticaG = projs.filter(x=>x.governancaIndice<50).length;
+            const atrasados = projs.filter(x=>x.status==='atraso');
+            const emRiscoList = projs.filter(x=>x.emRisco);
+            const comTarefasAtrasadas = projs.filter(x=>x.tarefasAtrasadas.length>0);
+            const semAtualizacaoList = projs.filter(x=>x.semAtualizacao);
+            return `<details class="gestor-row">
+              <summary>
+                <div class="gestor-nome"><span class="toggle-ico"></span>${nome}</div>
+                <div>${nProjetos}</div>
+                <div>${execMedio}%</div>
+                <div style="color:${govColor(govMedioG)};font-weight:600;">${govMedioG}</div>
+                <div style="${govCriticaG>0?'color:var(--red);font-weight:700;':''}">${govCriticaG}</div>
+              </summary>
+              <div class="gestor-body">
+                ${categoriaHtml('Atrasados', atrasados)}
+                ${categoriaHtml('Em risco', emRiscoList)}
+                ${categoriaHtml('Tarefas atrasadas', comTarefasAtrasadas, pr=>`${pr.tarefasAtrasadas.length} tarefa(s)`)}
+                ${categoriaHtml('Sem atualização', semAtualizacaoList, pr=> pr.diasSemAtualizacao!==null ? `${pr.diasSemAtualizacao}d` : 'sem registro')}
+              </div>
+            </details>`;
+          }).join('')}
+        </div>
       </div>
     </details>
   `;
@@ -835,6 +879,14 @@ function ativarTela(id){
   CURRENT_SCREEN = id;
   document.querySelectorAll('.rail button').forEach(b=>b.classList.toggle('active', b.dataset.screen===id));
   RENDERERS[id](aplicarFiltros(PROJETOS));
+}
+
+// Atalho pra abrir o detalhamento de um projeto direto de qualquer lugar (ex.: lista de projetos dentro do
+// drill-down "por gestor" na Tela 2) — usa a busca por nome que renderTela3 já suportava, só nunca era chamada de fora.
+function abrirProjeto(nome){
+  CURRENT_SCREEN = 's3';
+  document.querySelectorAll('.rail button').forEach(b=>b.classList.toggle('active', b.dataset.screen==='s3'));
+  renderTela3(PROJETOS, nome);
 }
 
 document.querySelectorAll('.rail button').forEach(btn=>{
