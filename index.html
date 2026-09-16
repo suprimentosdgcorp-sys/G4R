@@ -52,6 +52,15 @@
   .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
   .panel{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; box-shadow:0 1px 2px rgba(16,24,40,.03); }
   .panel h3{ font-size:13px; font-weight:600; margin:0 0 3px; }
+  details.panel{ padding:0; }
+  details.panel > summary{ list-style:none; cursor:pointer; padding:16px 18px; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  details.panel > summary::-webkit-details-marker{ display:none; }
+  details.panel > summary h3{ margin:0; }
+  details.panel > summary .toggle-ico{ width:20px; height:20px; border-radius:6px; background:#F1F2F4; color:var(--muted); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; flex-shrink:0; }
+  details.panel[open] > summary .toggle-ico::before{ content:'–'; }
+  details.panel:not([open]) > summary .toggle-ico::before{ content:'+'; }
+  details.panel > .details-body{ padding:0 18px 16px; }
+  details.panel > summary:hover .toggle-ico{ background:var(--orange-bg); color:var(--orange); }
   .panel .note{ color:var(--muted); font-size:10.5px; margin-bottom:10px; }
   .chart-box{ height:210px; }
   table{ width:100%; border-collapse:collapse; font-size:12px; }
@@ -592,42 +601,48 @@ function renderTela2(p){
       <div class="gov-card gov-click" onclick="filtrarEIr({prazo:'iminente'})"><div class="val">${vencimentoIminente}</div><div class="lbl">Vencimento iminente (≤${VENCIMENTO_IMINENTE_DIAS}d)</div></div>
       <div class="gov-card gov-click" onclick="filtrarEIr({flag:'semMeta'})"><div class="val" style="color:var(--red)">${semMeta}</div><div class="lbl">Sem meta mensurável</div></div>
     </div>
-    <div class="panel" style="margin-bottom:14px;">
-      <h3>Índice de aderência à governança — resumo da carteira</h3>
-      <div class="note">RF12/RN13 — pesos "exemplo" da proposta do documento (seção 8.4), ainda não validados pelo board/PMO. Isto é uma média da carteira inteira; o detalhamento por projeto está na tabela abaixo.</div>
-      <div style="display:flex;align-items:center;gap:22px;margin-bottom:14px;">
-        <div><div style="font-size:26px;font-weight:700;color:var(--orange);">${govMedio}</div><div style="font-size:11px;color:var(--muted);">índice médio da carteira (0-100)</div></div>
+    <details class="panel" style="margin-bottom:14px;" open>
+      <summary><h3>Índice de aderência à governança — resumo da carteira</h3><span class="toggle-ico"></span></summary>
+      <div class="details-body">
+        <div class="note">RF12/RN13 — pesos "exemplo" da proposta do documento (seção 8.4), ainda não validados pelo board/PMO. Isto é uma média da carteira inteira; o detalhamento por projeto está no painel abaixo.</div>
+        <div style="display:flex;align-items:center;gap:22px;margin-bottom:14px;">
+          <div><div style="font-size:26px;font-weight:700;color:var(--orange);">${govMedio}</div><div style="font-size:11px;color:var(--muted);">índice médio da carteira (0-100)</div></div>
+        </div>
+        ${CRITERIOS_GOVERNANCA.map(c=>{
+          const ok = p.filter(x=>c.ok(x)).length;
+          const percent = pct(ok, total);
+          return `<div class="bar-row"><div class="name">${c.label} (peso ${c.peso}%)</div><div class="bar-track"><div class="bar-fill" style="width:${percent}%;background:var(--orange);"></div></div><div class="pct">${percent}%</div></div>`;
+        }).join('')}
       </div>
-      ${CRITERIOS_GOVERNANCA.map(c=>{
-        const ok = p.filter(x=>c.ok(x)).length;
-        const percent = pct(ok, total);
-        return `<div class="bar-row"><div class="name">${c.label} (peso ${c.peso}%)</div><div class="bar-track"><div class="bar-fill" style="width:${percent}%;background:var(--orange);"></div></div><div class="pct">${percent}%</div></div>`;
-      }).join('')}
-    </div>
-    <div class="panel" style="margin-bottom:14px;">
-      <h3>Índice de aderência à governança — por projeto</h3>
-      <div class="note">Ordenado do menor pro maior índice, pra destacar primeiro quem precisa de atenção (gestão por exceção, seção 15 do documento). ✓/✗ mostram qual critério pesou no cálculo de cada um.</div>
-      <div style="overflow-x:auto;">
-      <table><tr><th>Projeto</th><th>Gestor</th>${CRITERIOS_GOVERNANCA.map(c=>`<th title="peso ${c.peso}%">${c.curto}</th>`).join('')}<th>Índice</th></tr>
-      ${p.slice().sort((a,b)=>a.governancaIndice-b.governancaIndice).map(proj=>`
-        <tr>
-          <td>${proj.nome}</td>
-          <td class="mut">${proj.gestor}</td>
-          ${CRITERIOS_GOVERNANCA.map(c=> c.ok(proj)
-            ? '<td style="text-align:center;color:var(--green);">✓</td>'
-            : '<td style="text-align:center;color:var(--red);">✗</td>').join('')}
-          <td style="font-weight:700;color:${govColor(proj.governancaIndice)};">${proj.governancaIndice}</td>
-        </tr>`).join('')}
-      </table>
+    </details>
+    <details class="panel" style="margin-bottom:14px;">
+      <summary><h3>Índice de aderência à governança — por projeto (${total})</h3><span class="toggle-ico"></span></summary>
+      <div class="details-body">
+        <div class="note">Ordenado do menor pro maior índice, pra destacar primeiro quem precisa de atenção (gestão por exceção, seção 15 do documento). ✓/✗ mostram qual critério pesou no cálculo de cada um.</div>
+        <div style="overflow-x:auto;">
+        <table><tr><th>Projeto</th><th>Gestor</th>${CRITERIOS_GOVERNANCA.map(c=>`<th title="peso ${c.peso}%">${c.curto}</th>`).join('')}<th>Índice</th></tr>
+        ${p.slice().sort((a,b)=>a.governancaIndice-b.governancaIndice).map(proj=>`
+          <tr>
+            <td>${proj.nome}</td>
+            <td class="mut">${proj.gestor}</td>
+            ${CRITERIOS_GOVERNANCA.map(c=> c.ok(proj)
+              ? '<td style="text-align:center;color:var(--green);">✓</td>'
+              : '<td style="text-align:center;color:var(--red);">✗</td>').join('')}
+            <td style="font-weight:700;color:${govColor(proj.governancaIndice)};">${proj.governancaIndice}</td>
+          </tr>`).join('')}
+        </table>
+        </div>
       </div>
-    </div>
-    <div class="panel">
-      <h3>Visão da carteira por gestor</h3>
-      <div class="note">Objetivo: evidenciar carga da carteira e necessidade de apoio ou rebalanceamento — não é ranking</div>
-      <table><tr><th>Gestor</th><th>Projetos</th><th>Atrasados</th><th>Em risco</th><th>Tarefas atrasadas</th><th>Sem atualização</th><th>% médio execução</th><th>Governança média</th><th>Governança crítica (&lt;50)</th></tr>
-      ${linhasGestor.map(([nome,g])=>`<tr><td>${nome}</td><td>${g.projetos}</td><td>${g.atrasados}</td><td>${g.emRisco}</td><td>${g.tarefasAtrasadas}</td><td>${g.semAtualizacao}</td><td>${Math.round(g.execSum/g.projetos)}%</td><td style="font-weight:600;color:${govColor(Math.round(g.govSum/g.projetos))};">${Math.round(g.govSum/g.projetos)}</td><td style="${g.govCritica>0?'color:var(--red);font-weight:700;':''}">${g.govCritica}</td></tr>`).join('')}
-      </table>
-    </div>
+    </details>
+    <details class="panel" open>
+      <summary><h3>Visão da carteira por gestor</h3><span class="toggle-ico"></span></summary>
+      <div class="details-body">
+        <div class="note">Objetivo: evidenciar carga da carteira e necessidade de apoio ou rebalanceamento — não é ranking</div>
+        <table><tr><th>Gestor</th><th>Projetos</th><th>Atrasados</th><th>Em risco</th><th>Tarefas atrasadas</th><th>Sem atualização</th><th>% médio execução</th><th>Governança média</th><th>Governança crítica (&lt;50)</th></tr>
+        ${linhasGestor.map(([nome,g])=>`<tr><td>${nome}</td><td>${g.projetos}</td><td>${g.atrasados}</td><td>${g.emRisco}</td><td>${g.tarefasAtrasadas}</td><td>${g.semAtualizacao}</td><td>${Math.round(g.execSum/g.projetos)}%</td><td style="font-weight:600;color:${govColor(Math.round(g.govSum/g.projetos))};">${Math.round(g.govSum/g.projetos)}</td><td style="${g.govCritica>0?'color:var(--red);font-weight:700;':''}">${g.govCritica}</td></tr>`).join('')}
+        </table>
+      </div>
+    </details>
   `;
   wireFiltros();
 }
