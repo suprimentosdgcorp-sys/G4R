@@ -810,15 +810,6 @@ function renderDetalhe(proj){
       </div>
     </div>
     <div class="prov-note"><b>Sobre Governança e Saúde:</b> índice de governança usa os pesos "exemplo" do documento (seção 8.4); saúde do projeto usa uma fórmula provisória (prazo 35% + execução 30% + governança 20% + atualização 15%) que exclui "resultado" — RF09/RF10 ainda não têm meta/atual numérico em nenhum projeto. Nenhum dos dois foi validado pelo board/PMO (item 18 do documento).</div>
-    <div class="panel" style="margin-bottom:14px;">
-      <h3>Alertas deste projeto${alertasProjeto.length ? ` (${alertasProjeto.length})` : ''}</h3>
-      ${alertasProjeto.length ? `
-        <div class="note">Mesma lógica da Central de Alertas (Tela 4), filtrada só pra este projeto.</div>
-        <table><tr><th>Criticidade</th><th>Tipo de alerta</th><th>Detalhe</th><th>Tarefa</th><th>Ação necessária</th></tr>
-        ${alertasProjeto.map(a=>`<tr><td><span class="pill ${a.criticidade==='critica'?'critica':a.criticidade==='alta'?'alta':'media'}"><span class="dot"></span>${a.criticidade==='critica'?'Crítica':a.criticidade==='alta'?'Alta':'Média'}</span></td><td>${a.tipo}</td><td>${a.detalhe}</td><td class="mut">${a.tarefa}</td><td class="mut">${ACAO_POR_TIPO[a.tipo]||'—'}</td></tr>`).join('')}
-        </table>
-      ` : `<div class="note" style="margin-bottom:0;color:var(--green);">✓ Nenhum alerta ativo para este projeto no momento.</div>`}
-    </div>
     <div class="grid2">
       <div class="panel">
         <h3>Evolução física</h3>
@@ -848,8 +839,10 @@ function renderDetalhe(proj){
         </div>
       `}
     </div>
-    <div class="panel">
+    <div class="panel" style="margin-bottom:14px;">
       <h3>Tabela de tarefas</h3>
+      <div class="note">Role dentro da tabela pra ver as demais tarefas.</div>
+      <div class="scroll-tall">
       <table><tr><th>Tarefa</th><th>Responsável</th><th>Início</th><th>Fim</th><th>Dias até venc.</th><th>Últ. atualização</th><th>Status</th><th>Alerta</th></tr>
       ${proj.cards.map(c=>{
         const listaNorm = normLista(c['Lista (Status)']);
@@ -865,6 +858,16 @@ function renderDetalhe(proj){
         return `<tr><td>${c['Projeto/Tarefa']}</td><td>${c['Responsável(is)']||'<span class="pending">A definir</span>'}</td><td>${dataInicioCard ? dataInicioCard.toLocaleDateString('pt-BR') : '—'}</td><td>${dataFimCard ? dataFimCard.toLocaleDateString('pt-BR') : '—'}</td><td>${diasVencLabel}</td><td class="mut">${ultimaAtCard ? ultimaAtCard.toLocaleDateString('pt-BR') : '—'}</td><td><span class="pill ${pillClass}"><span class="dot"></span>${c['Lista (Status)']}</span></td><td>${alertas.join(' ') || '<span class="mut">—</span>'}</td></tr>`;
       }).join('')}
       </table>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Alertas deste projeto${alertasProjeto.length ? ` (${alertasProjeto.length})` : ''}</h3>
+      ${alertasProjeto.length ? `
+        <div class="note">Mesma lógica da Central de Alertas (Tela 4), filtrada só pra este projeto.</div>
+        <table><tr><th>Criticidade</th><th>Tipo de alerta</th><th>Detalhe</th><th>Tarefa</th><th>Ação necessária</th></tr>
+        ${alertasProjeto.map(a=>`<tr><td><span class="pill ${a.criticidade==='critica'?'critica':a.criticidade==='alta'?'alta':'media'}"><span class="dot"></span>${a.criticidade==='critica'?'Crítica':a.criticidade==='alta'?'Alta':'Média'}</span></td><td>${a.tipo}</td><td>${a.detalhe}</td><td class="mut">${a.tarefa}</td><td class="mut">${ACAO_POR_TIPO[a.tipo]||'—'}</td></tr>`).join('')}
+        </table>
+      ` : `<div class="note" style="margin-bottom:0;color:var(--green);">✓ Nenhum alerta ativo para este projeto no momento.</div>`}
     </div>
   `;
   document.getElementById('voltarPortfolio').addEventListener('click', ()=>ativarTela('s3'));
