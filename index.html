@@ -12,7 +12,7 @@
 <style>
   :root{
     --bg:#F4F5F7; --card:#FFFFFF; --line:#E4E7EC; --text:#12141A; --muted:#6B7280;
-    --navy:#34426b; --orange:#E08A2C; --orange-bg:#FDF0E1;
+    --navy:#34426b; --navy-bg:#E8EBF1; --orange:#E08A2C; --orange-bg:#FDF0E1;
     --blue:#5B7FE8; --blue-bg:#EAEEFD; --red:#E15A5A; --red-bg:#FCEAEA;
     --green:#3FA873; --green-bg:#E9F6F0; --purple:#9B7FE8; --sans:'Inter', sans-serif;
   }
@@ -28,9 +28,9 @@
   .rail nav{ display:flex; flex-direction:column; gap:2px; padding:0 10px; }
   .rail button{ all:unset; cursor:pointer; padding:10px 12px; border-radius:7px; color:var(--muted); font-size:13px; font-weight:500; display:flex; align-items:center; gap:9px; border-left:3px solid transparent; }
   .rail button:hover{ background:#F7F8FA; }
-  .rail button.active{ background:var(--orange-bg); color:var(--orange); border-left:3px solid var(--orange); }
+  .rail button.active{ background:var(--navy-bg); color:var(--navy); border-left:3px solid var(--navy); }
   .rail .dot{ width:6px; height:6px; border-radius:50%; background:var(--muted); flex-shrink:0; }
-  .rail button.active .dot{ background:var(--orange); }
+  .rail button.active .dot{ background:var(--navy); }
   .rail .foot{ margin-top:24px; padding:14px 18px 0; border-top:1px solid var(--line); color:var(--muted); font-size:10.5px; line-height:1.6; }
   .main{ flex:1; padding:26px 32px 60px; max-width:1260px; }
   h1{ font-size:19px; font-weight:700; margin:0 0 3px; }
@@ -38,9 +38,9 @@
   .kpi-row{ display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:14px; }
   .kpi{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; box-shadow:0 1px 2px rgba(16,24,40,.03); }
   .kpi-click{ cursor:pointer; transition:box-shadow .12s, border-color .12s; }
-  .kpi-click:hover{ box-shadow:0 3px 10px rgba(16,24,40,.10); border-color:var(--orange); }
+  .kpi-click:hover{ box-shadow:0 3px 10px rgba(16,24,40,.10); border-color:var(--navy); }
   .gov-click{ cursor:pointer; transition:box-shadow .12s, border-color .12s; }
-  .gov-click:hover{ box-shadow:0 3px 10px rgba(16,24,40,.10); border-color:var(--orange); }
+  .gov-click:hover{ box-shadow:0 3px 10px rgba(16,24,40,.10); border-color:var(--navy); }
   .kpi .top{ display:flex; justify-content:space-between; align-items:flex-start; }
   .kpi .lbl{ font-size:11px; color:var(--muted); font-weight:500; }
   .kpi .icon{ width:22px; height:22px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:12px; }
@@ -78,7 +78,7 @@
   details > summary .toggle-ico.small{ width:16px; height:16px; font-size:12px; border-radius:4px; }
   details[open] > summary .toggle-ico::before{ content:'–'; }
   details:not([open]) > summary .toggle-ico::before{ content:'+'; }
-  details > summary:hover .toggle-ico{ background:var(--orange-bg); color:var(--orange); }
+  details > summary:hover .toggle-ico{ background:var(--navy-bg); color:var(--navy); }
   /* Tabela por gestor com drill-down: gestor -> categoria (atrasados/em risco/...) -> projeto */
   .gestor-table{ width:100%; font-size:12px; }
   .gestor-head-row{ display:grid; grid-template-columns:2fr 1fr 1.4fr 1.2fr 1.4fr; gap:8px; padding:0 10px 8px; font-size:10.5px; color:var(--muted); font-weight:500; border-bottom:1px solid var(--line); }
@@ -99,9 +99,15 @@
   th{ text-align:left; color:var(--muted); font-weight:500; font-size:10.5px; padding:8px 10px; border-bottom:1px solid var(--line); }
   td{ padding:9px 10px; border-bottom:1px solid var(--line); }
   tr:last-child td{ border-bottom:none; }
+  tr.alert-row{ cursor:pointer; }
+  tr.alert-row:hover td{ background:#F7F8FA; }
+  /* V5 — visuais grandes (muitas linhas) ficam com altura máxima e rolagem interna, em vez de esticar
+     a página inteira — o mouse dentro do visual rola só ele, o resto da tela fica fixo. */
+  .scroll-tall{ max-height:420px; overflow-y:auto; }
+  .scroll-tall table th{ position:sticky; top:0; background:var(--card); z-index:1; box-shadow:0 1px 0 var(--line); }
   .pill{ display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:12px; font-size:10.5px; font-weight:600; }
   .pill .dot{ width:6px; height:6px; border-radius:50%; }
-  .pill.andamento{ background:var(--blue-bg); color:var(--blue); } .pill.andamento .dot{ background:var(--blue); }
+  .pill.andamento{ background:var(--navy-bg); color:var(--navy); } .pill.andamento .dot{ background:var(--navy); }
   .pill.atraso{ background:var(--red-bg); color:var(--red); } .pill.atraso .dot{ background:var(--red); }
   .pill.concluido{ background:var(--green-bg); color:var(--green); } .pill.concluido .dot{ background:var(--green); }
   .pill.naoiniciado{ background:#F1F2F4; color:var(--muted); } .pill.naoiniciado .dot{ background:var(--muted); }
@@ -212,7 +218,8 @@ const FLAG_FILTROS = {
 
 function aplicarFiltros(lista){
   return lista.filter(p=>{
-    if(FILTROS.projeto && p.nome!==FILTROS.projeto) return false;
+    // V5 — busca por texto (case-insensitive, substring) em vez de exigir nome exato do dropdown antigo.
+    if(FILTROS.projeto && !p.nome.toLowerCase().includes(FILTROS.projeto.trim().toLowerCase())) return false;
     if(FILTROS.gestor && p.gestor!==FILTROS.gestor) return false;
     if(FILTROS.status && p.status!==FILTROS.status) return false;
     if(FILTROS.objetivo){
@@ -244,7 +251,7 @@ function renderFiltros(){
 
   return `
     <div class="filters">
-      <div class="fgroup"><label>Projeto específico</label><select id="fProjeto"><option value="">Todos</option>${nomes.map(n=>opt(n,FILTROS.projeto,n)).join('')}</select></div>
+      <div class="fgroup"><label>Projeto específico</label><input type="text" id="fProjeto" list="fProjetoList" autocomplete="off" placeholder="Digite pra buscar..." value="${FILTROS.projeto}"><datalist id="fProjetoList">${nomes.map(n=>`<option value="${n}">`).join('')}</datalist></div>
       <div class="fgroup"><label>Gestor</label><select id="fGestor"><option value="">Todos</option>${gestores.map(g=>opt(g,FILTROS.gestor,g)).join('')}</select></div>
       <div class="fgroup"><label>Status do projeto</label><select id="fStatus">
         <option value="">Todos</option>
@@ -280,7 +287,11 @@ function renderFiltros(){
 }
 
 function wireFiltros(){
-  document.getElementById('fProjeto').onchange = e=>{ FILTROS.projeto=e.target.value; ativarTela(CURRENT_SCREEN); };
+  // V5 — input de texto: filtra ao perder o foco (change) ou ao apertar Enter, nunca a cada tecla —
+  // um re-render por tecla apagaria o próprio campo (perde o foco) porque renderFiltros() reconstrói o DOM.
+  const aplicarProjetoDigitado = e=>{ FILTROS.projeto=e.target.value; ativarTela(CURRENT_SCREEN); };
+  document.getElementById('fProjeto').onchange = aplicarProjetoDigitado;
+  document.getElementById('fProjeto').onkeydown = e=>{ if(e.key==='Enter'){ e.preventDefault(); aplicarProjetoDigitado(e); } };
   document.getElementById('fGestor').onchange = e=>{ FILTROS.gestor=e.target.value; ativarTela(CURRENT_SCREEN); };
   document.getElementById('fStatus').onchange = e=>{ FILTROS.status=e.target.value; ativarTela(CURRENT_SCREEN); };
   document.getElementById('fObjetivo').onchange = e=>{ FILTROS.objetivo=e.target.value; ativarTela(CURRENT_SCREEN); };
@@ -507,19 +518,19 @@ function renderTela1(p){
       <div class="kpi kpi-hero kpi-click" onclick="filtrarEIr({})"><div class="top"><span class="lbl">Total de projetos</span><span class="icon gray">▦</span></div><div class="val">${total}</div><div class="sub">boards ativos no workspace</div></div>
       <div class="kpi kpi-hero kpi-click" onclick="filtrarEIr({risco:'sim'})"><div class="top"><span class="lbl">Em risco</span><span class="icon orange">◎</span></div><div class="val" style="color:var(--orange)">${emRisco}</div><div class="sub">${pct(emRisco,total)}% da carteira</div></div>
       <div class="kpi kpi-hero kpi-click" onclick="filtrarEIr({flag:'semAtualizacao'})"><div class="top"><span class="lbl">Sem atualização</span><span class="icon gray">⏱</span></div><div class="val">${semAtualizacao}</div><div class="sub">>${SEM_ATUALIZACAO_DIAS} dias sem mover</div></div>
-      <div class="kpi kpi-hero"><div class="top"><span class="lbl">Saúde média do portfólio</span><span class="icon ${saudeMediaClasse}">♥</span></div><div class="val" style="color:${govColor(saudeMedia)}">${saudeMedia}</div><div class="sub">${nSaudavel} saudável · ${nAtencao} atenção · ${nCritico} crítico</div></div>
+      <div class="kpi kpi-hero"><div class="top"><span class="lbl">Saúde média do portfólio</span><span class="icon ${saudeMediaClasse}">♥</span></div><div class="val" style="color:${govColor(saudeMedia)}">${saudeMedia}<span style="font-size:14px;color:var(--muted);font-weight:500;"> /100</span></div><div class="sub">${nSaudavel} saudável · ${nAtencao} atenção · ${nCritico} crítico</div></div>
     </div>
     <div class="panel" style="margin-bottom:14px;">
       <h3>Composição da carteira</h3>
       <div class="note">Clique num segmento ou na legenda pra filtrar a carteira por esse status</div>
       <div class="comp-bar">
-        <div class="comp-seg" style="width:${pct(andamento,total)}%;background:var(--blue);" title="Em andamento: ${andamento}" onclick="filtrarEIr({status:'andamento'})"></div>
+        <div class="comp-seg" style="width:${pct(andamento,total)}%;background:var(--navy);" title="Em andamento: ${andamento}" onclick="filtrarEIr({status:'andamento'})"></div>
         <div class="comp-seg" style="width:${pct(atraso,total)}%;background:var(--red);" title="Em atraso: ${atraso}" onclick="filtrarEIr({status:'atraso'})"></div>
         <div class="comp-seg" style="width:${pct(concluido,total)}%;background:var(--green);" title="Concluído: ${concluido}" onclick="filtrarEIr({status:'concluido'})"></div>
         <div class="comp-seg" style="width:${pct(naoIniciado,total)}%;background:#B8BEC9;" title="Não iniciado: ${naoIniciado}" onclick="filtrarEIr({status:'naoiniciado'})"></div>
       </div>
       <div class="comp-legend">
-        <div class="comp-item" onclick="filtrarEIr({status:'andamento'})"><span class="dot" style="background:var(--blue)"></span>Em andamento <b>${andamento}</b> <span class="mut">(${pct(andamento,total)}%)</span></div>
+        <div class="comp-item" onclick="filtrarEIr({status:'andamento'})"><span class="dot" style="background:var(--navy)"></span>Em andamento <b>${andamento}</b> <span class="mut">(${pct(andamento,total)}%)</span></div>
         <div class="comp-item" onclick="filtrarEIr({status:'atraso'})"><span class="dot" style="background:var(--red)"></span>Em atraso <b>${atraso}</b> <span class="mut">(${pct(atraso,total)}%)</span></div>
         <div class="comp-item" onclick="filtrarEIr({status:'concluido'})"><span class="dot" style="background:var(--green)"></span>Concluído (lista) <b>${concluido}</b> <span class="mut">(${pct(concluido,total)}%)</span></div>
         <div class="comp-item" onclick="filtrarEIr({status:'naoiniciado'})"><span class="dot" style="background:#B8BEC9"></span>Não iniciado <b>${naoIniciado}</b> <span class="mut">(${pct(naoIniciado,total)}%)</span></div>
@@ -609,7 +620,7 @@ function renderTela2(p){
     <p class="lede">Trello + TAP — sem dependência de dado financeiro</p>
     ${renderFiltros()}
     <div class="gov-grid">
-      <div class="gov-card gov-click" onclick="filtrarEIr({})"><div class="val">${total}</div><div class="lbl">Total de projetos</div></div>
+      <div class="gov-card gov-click" onclick="filtrarEIr({})"><div class="val" style="color:var(--text)">${total}</div><div class="lbl">Total de projetos</div></div>
       <div class="gov-card gov-click" onclick="filtrarEIr({tap:'sem'})"><div class="val" style="color:var(--red)">${semTAP}</div><div class="lbl">Projetos sem TAP</div></div>
       <div class="gov-card gov-click" onclick="filtrarEIr({flag:'tapSemQuadroAtivo'})"><div class="val">${tapSemQuadroAtivo}</div><div class="lbl">Projetos com TAP, mas sem quadro/estrutura operacional ativa</div></div>
       <div class="gov-card gov-click" onclick="filtrarEIr({flag:'semPrazoFinal'})"><div class="val">${semPrazoFinal}</div><div class="lbl">Sem prazo final (nem TAP nem tarefa)</div></div>
@@ -621,14 +632,14 @@ function renderTela2(p){
       <div class="gov-card gov-click" onclick="filtrarEIr({flag:'semMeta'})"><div class="val" style="color:var(--red)">${semMeta}</div><div class="lbl">Sem meta mensurável</div></div>
     </div>
     <div class="grid2" style="margin-bottom:14px;">
-      <div class="panel"><h3>Projetos por objetivo estratégico</h3><div class="note">TAP — só classifica quem tem TAP (${semTAPCount}/${total} sem TAP)</div><div class="chart-box"><canvas id="chartObjetivo"></canvas></div></div>
-      <div class="panel"><h3>Projetos por gestor</h3><div class="note">TAP quando existe, senão responsável mais frequente nas tarefas do board</div><div class="chart-box"><canvas id="chartGestor"></canvas></div></div>
+      <div class="panel"><h3>Projetos por objetivo estratégico</h3><div class="note">TAP — só classifica quem tem TAP (${semTAPCount}/${total} sem TAP). Clique numa fatia pra filtrar.</div><div class="chart-box"><canvas id="chartObjetivo"></canvas></div></div>
+      <div class="panel"><h3>Projetos por gestor</h3><div class="note">TAP quando existe, senão responsável mais frequente nas tarefas do board. Clique numa barra pra filtrar.</div><div class="chart-box"><canvas id="chartGestor"></canvas></div></div>
     </div>
     <details class="panel" style="margin-bottom:14px;">
       <summary><h3>Índice de aderência à governança — por projeto (${total})</h3><span class="toggle-ico"></span></summary>
       <div class="details-body">
-        <div class="note">Ordenado do menor pro maior índice, pra destacar primeiro quem precisa de atenção (gestão por exceção, seção 15 do documento). ✓/✗ mostram qual critério pesou no cálculo de cada um.</div>
-        <div style="overflow-x:auto;">
+        <div class="note">Ordenado do menor pro maior índice, pra destacar primeiro quem precisa de atenção (gestão por exceção, seção 15 do documento). ✓/✗ mostram qual critério pesou no cálculo de cada um. Role dentro da tabela pra ver os demais projetos.</div>
+        <div class="scroll-tall" style="overflow-x:auto;">
         <table><tr><th>Projeto</th><th>Gestor</th>${CRITERIOS_GOVERNANCA.map(c=>`<th title="peso ${c.peso}%">${c.curto}</th>`).join('')}<th>Índice</th></tr>
         ${p.slice().sort((a,b)=>a.governancaIndice-b.governancaIndice).map(proj=>`
           <tr>
@@ -646,9 +657,10 @@ function renderTela2(p){
     <details class="panel" open>
       <summary><h3>Visão da carteira por gestor</h3><span class="toggle-ico"></span></summary>
       <div class="details-body">
-        <div class="note">Objetivo: evidenciar carga da carteira e necessidade de apoio ou rebalanceamento — não é ranking. Clique em "+" pra ver Atrasados/Em risco/Tarefas atrasadas/Sem atualização daquele gestor, e de novo pra ver quais projetos especificamente.</div>
+        <div class="note">Objetivo: evidenciar carga da carteira e necessidade de apoio ou rebalanceamento — não é ranking. Clique em "+" pra ver Atrasados/Em risco/Tarefas atrasadas/Sem atualização daquele gestor, e de novo pra ver quais projetos especificamente. Role dentro da lista pra ver os demais gestores.</div>
         <div class="gestor-table">
           <div class="gestor-head-row"><div>Gestor</div><div>Projetos</div><div>% médio execução</div><div>Governança média</div><div>Governança crítica (&lt;50)</div></div>
+          <div class="scroll-tall">
           ${linhasGestor.map(([nome,projs])=>{
             const nProjetos = projs.length;
             const execMedio = Math.round(projs.reduce((s,x)=>s+pct(x.nConcluido,x.total),0)/nProjetos);
@@ -674,6 +686,7 @@ function renderTela2(p){
               </div>
             </details>`;
           }).join('')}
+          </div>
         </div>
       </div>
     </details>
@@ -686,12 +699,31 @@ function renderTela2(p){
     type:'doughnut',
     data:{ labels:[...objLabels, 'Sem TAP / não classificado'],
       datasets:[{ data:[...objValues, semTAPCount], backgroundColor:['#E08A2C','#5B7FE8','#3FA873','#9B7FE8','#E15A5A','#F5B971','#7FB3E8','#E4E7EC'] }]},
-    options:{ plugins:{legend:{position:'right',labels:{boxWidth:10,font:{size:9.5}}}} }
+    options:{
+      plugins:{legend:{position:'right',labels:{boxWidth:10,font:{size:9.5}}}},
+      // V5 — clicável: fatia de objetivo filtra por FILTROS.objetivo; a última fatia ("Sem TAP / não
+      // classificado") é a mesma proxy usada pra contá-la (objetivoEstrategico vazio == sem TAP), então cai no filtro "tap:sem".
+      onClick:(evt,elements)=>{
+        if(!elements.length) return;
+        const idx = elements[0].index;
+        if(idx < objLabels.length) filtrarEIr({objetivo: objLabels[idx]});
+        else filtrarEIr({tap:'sem'});
+      },
+      onHover:(evt,elements)=>{ evt.native.target.style.cursor = elements.length ? 'pointer' : 'default'; }
+    }
   });
   charts.gestor = new Chart(document.getElementById('chartGestor'), {
     type:'bar',
-    data:{ labels: topGestores.map(g=>g[0]), datasets:[{ data: topGestores.map(g=>g[1]), backgroundColor:'#E08A2C', borderRadius:4 }]},
-    options:{ plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}},y:{grid:{color:'#EEF0F3'}}} }
+    data:{ labels: topGestores.map(g=>g[0]), datasets:[{ data: topGestores.map(g=>g[1]), backgroundColor:'#34426b', borderRadius:4 }]},
+    options:{
+      plugins:{legend:{display:false}},
+      scales:{x:{grid:{display:false}},y:{grid:{color:'#EEF0F3'}}},
+      onClick:(evt,elements)=>{
+        if(!elements.length) return;
+        filtrarEIr({gestor: topGestores[elements[0].index][0]});
+      },
+      onHover:(evt,elements)=>{ evt.native.target.style.cursor = elements.length ? 'pointer' : 'default'; }
+    }
   });
   wireFiltros();
 }
@@ -711,7 +743,7 @@ function renderTela3(p, cardIdParam){
     <p class="lede">${p.length} de ${PROJETOS.length} projetos no filtro atual — clique em um para ver o detalhamento</p>
     ${filtroOrigemCard.length ? `<div class="filter-gap-note" style="background:var(--blue-bg);border-color:var(--blue);color:var(--blue);"><b>Filtro do card clicado:</b> ${filtroOrigemCard.join(', ')} — use "Limpar filtros" pra remover.</div>` : ''}
     ${renderFiltros()}
-    <div class="panel"><table id="projTable"><tr><th>Projeto</th><th>Gestor</th><th>Status</th><th>Tarefas</th><th>TAP</th></tr></table></div>
+    <div class="panel"><div class="scroll-tall"><table id="projTable"><tr><th>Projeto</th><th>Gestor</th><th>Status</th><th>Tarefas</th><th>TAP</th></tr></table></div></div>
   `;
   wireFiltros();
   const tbl = document.getElementById('projTable');
@@ -751,7 +783,7 @@ function renderDetalhe(proj){
         <div class="note">${proj.nConcluido} de ${proj.total} tarefas concluídas — Trello puro</div>
         <div style="display:flex;align-items:center;gap:18px;">
           <div style="height:140px;width:140px;flex-shrink:0;"><canvas id="chartEvol"></canvas></div>
-          <div><div style="font-size:22px;font-weight:700;color:var(--orange);">${evolPct}%</div><div style="font-size:11.5px;color:var(--muted);">de execução física</div></div>
+          <div><div style="font-size:22px;font-weight:700;color:var(--navy);">${evolPct}%</div><div style="font-size:11.5px;color:var(--muted);">de execução física</div></div>
         </div>
       </div>
       <div class="panel">
@@ -766,7 +798,7 @@ function renderDetalhe(proj){
       <div class="note">Compara % de prazo consumido (entre a tarefa com início mais antigo e a de fim mais próximo) com o % de execução física. Faixa de tolerância provisória: ±${DESVIO_RITMO_LIMITE} pontos percentuais.</div>
       ${proj.pctPrazoConsumido===null ? `<div class="pending">Sem datas de início/fim suficientes nas tarefas para calcular.</div>` : `
         <div class="bar-row"><div class="name">Prazo consumido</div><div class="bar-track"><div class="bar-fill" style="width:${proj.pctPrazoConsumido}%;background:var(--blue);"></div></div><div class="pct">${proj.pctPrazoConsumido}%</div></div>
-        <div class="bar-row"><div class="name">Execução física</div><div class="bar-track"><div class="bar-fill" style="width:${evolPct}%;background:var(--orange);"></div></div><div class="pct">${evolPct}%</div></div>
+        <div class="bar-row"><div class="name">Execução física</div><div class="bar-track"><div class="bar-fill" style="width:${evolPct}%;background:var(--navy);"></div></div><div class="pct">${evolPct}%</div></div>
         <div style="font-size:12px;margin-top:4px;">
           ${proj.desvioRitmo > DESVIO_RITMO_LIMITE
             ? `<span style="color:var(--red);font-weight:600;">⚠ Desvio de ${proj.desvioRitmo} p.p. — prazo avançando mais rápido que a execução.</span>`
@@ -796,7 +828,7 @@ function renderDetalhe(proj){
   document.getElementById('voltarPortfolio').addEventListener('click', ()=>ativarTela('s3'));
   new Chart(document.getElementById('chartEvol'), {
     type:'doughnut',
-    data:{ labels:['Concluídas','Restantes'], datasets:[{ data:[evolPct,100-evolPct], backgroundColor:['#E08A2C','#EEF0F3'], borderWidth:0 }]},
+    data:{ labels:['Concluídas','Restantes'], datasets:[{ data:[evolPct,100-evolPct], backgroundColor:['#34426b','#EEF0F3'], borderWidth:0 }]},
     options:{ cutout:'72%', plugins:{legend:{display:false}} }
   });
 }
@@ -869,9 +901,12 @@ function renderTela4(p){
       <div class="kpi"><div class="top"><span class="lbl">Alertas médios</span><span class="icon gray">●</span></div><div class="val">${nMedia}</div></div>
     </div>
     <div class="panel">
+      <div class="note">Clique numa linha pra abrir o detalhamento do projeto e ver exatamente quais tarefas estão por trás do alerta. Role dentro da tabela pra ver os demais alertas.</div>
+      <div class="scroll-tall">
       <table><tr><th>Criticidade</th><th>Projeto</th><th>Gestor</th><th>Tipo de alerta</th><th>Detalhe</th><th>Tarefa</th><th>Ação necessária</th></tr>
-      ${alertas.slice(0,60).map(a=>`<tr><td><span class="pill ${a.criticidade==='critica'?'critica':a.criticidade==='alta'?'alta':'media'}"><span class="dot"></span>${a.criticidade==='critica'?'Crítica':a.criticidade==='alta'?'Alta':'Média'}</span></td><td>${a.projeto}</td><td>${a.gestor}</td><td>${a.tipo}</td><td>${a.detalhe}</td><td class="mut">${a.tarefa}</td><td class="mut">${ACAO_POR_TIPO[a.tipo]||'—'}</td></tr>`).join('')}
+      ${alertas.slice(0,60).map(a=>`<tr class="alert-row" onclick="abrirProjeto('${a.projeto.replace(/'/g,"\\'")}')"><td><span class="pill ${a.criticidade==='critica'?'critica':a.criticidade==='alta'?'alta':'media'}"><span class="dot"></span>${a.criticidade==='critica'?'Crítica':a.criticidade==='alta'?'Alta':'Média'}</span></td><td>${a.projeto}</td><td>${a.gestor}</td><td>${a.tipo}</td><td>${a.detalhe}</td><td class="mut">${a.tarefa}</td><td class="mut">${ACAO_POR_TIPO[a.tipo]||'—'}</td></tr>`).join('')}
       </table>
+      </div>
       ${alertas.length>60 ? `<div class="note" style="margin-top:10px;">Mostrando 60 de ${alertas.length} alertas.</div>` : ''}
     </div>
   `;
