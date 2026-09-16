@@ -103,7 +103,7 @@
   tr.alert-row:hover td{ background:#F7F8FA; }
   /* V5 — visuais grandes (muitas linhas) ficam com altura máxima e rolagem interna, em vez de esticar
      a página inteira — o mouse dentro do visual rola só ele, o resto da tela fica fixo. */
-  .scroll-tall{ max-height:420px; overflow-y:auto; }
+  .scroll-tall{ max-height:420px; overflow-y:auto; overflow-x:auto; }
   .scroll-tall table th{ position:sticky; top:0; background:var(--card); z-index:1; box-shadow:0 1px 0 var(--line); }
   .pill{ display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:12px; font-size:10.5px; font-weight:600; }
   .pill .dot{ width:6px; height:6px; border-radius:50%; }
@@ -151,6 +151,44 @@
   .fgroup input::placeholder{ color:var(--muted); }
   .clear-btn{ border:1px solid var(--line); background:var(--card); padding:7px 12px; border-radius:7px; font-size:12px; color:var(--muted); cursor:pointer; }
   .filter-gap-note{ background:#FDF0E1; border:1px dashed var(--orange); border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:11px; color:#8A5A1C; }
+
+  /* ===================== V5 — RESPONSIVO (celular) ===================== */
+  @media (max-width:760px){
+    /* Barra lateral: de coluna fixa de 210px (que sobraria pouquíssimo espaço pra tela num celular) pra uma
+       faixa horizontal no topo, com os botões de navegação rolando de lado em vez de empilhados. */
+    .app{ flex-direction:column; min-height:auto; }
+    .rail{ width:100%; height:auto; position:static; padding:12px 0; border-right:none; border-bottom:1px solid var(--line); }
+    .rail .brand{ padding:0 14px 12px; margin-bottom:10px; }
+    .rail .foot{ display:none; } /* texto de rodapé (versão/fonte) não cabe bem e não é essencial no celular */
+    .rail nav{ flex-direction:row; overflow-x:auto; padding:0 14px 4px; gap:6px; -webkit-overflow-scrolling:touch; }
+    .rail button{ white-space:nowrap; flex-shrink:0; border-left:none; border-bottom:3px solid transparent; padding:8px 12px; }
+    .rail button.active{ border-left:none; border-bottom:3px solid var(--navy); }
+
+    .main{ padding:16px 16px 40px; max-width:100%; }
+    h1{ font-size:17px; }
+
+    /* Grids de card (KPI/governança): de 3-7 colunas fixas pra 2 — os valores em `style=` inline (hero, saúde,
+       alertas) têm mais especificidade que classe, por isso o !important aqui, senão o celular ignoraria. */
+    .kpi-row, .gov-grid{ grid-template-columns:repeat(2,1fr) !important; gap:10px; }
+    .kpi-hero .val{ font-size:26px; }
+    .grid2{ grid-template-columns:1fr; }
+
+    /* Cabeçalho do projeto: menos espaço entre os pares rótulo/valor, senão quebra em muitas linhas. */
+    .proj-head .meta{ gap:14px 20px; }
+
+    /* Tabela "Visão da carteira por gestor": é uma grade de 5 colunas customizada (não é <table>), então em vez
+       de espremer o texto até ficar ilegível, ela ganha uma largura mínima e rola de lado como uma tabela normal. */
+    .gestor-table{ overflow-x:auto; }
+    .gestor-head-row, details.gestor-row > summary{ min-width:560px; }
+
+    /* Campos de filtro: 2 por linha em vez de 1 (que ocuparia a tela toda) ou N lado a lado (que espremeria). */
+    .fgroup input[type="text"]{ min-width:0; }
+    .fgroup{ width:calc(50% - 5px); }
+    .fgroup select, .fgroup input:not([type="checkbox"]){ width:100%; }
+    .clear-btn{ width:100%; }
+
+    .chart-box{ height:230px; }
+  }
 </style>
 </head>
 <body>
@@ -863,10 +901,12 @@ function renderDetalhe(proj){
     <div class="panel">
       <h3>Alertas deste projeto${alertasProjeto.length ? ` (${alertasProjeto.length})` : ''}</h3>
       ${alertasProjeto.length ? `
-        <div class="note">Mesma lógica da Central de Alertas (Tela 4), filtrada só pra este projeto.</div>
+        <div class="note">Mesma lógica da Central de Alertas (Tela 4), filtrada só pra este projeto. Role dentro da tabela pra ver os demais.</div>
+        <div class="scroll-tall">
         <table><tr><th>Criticidade</th><th>Tipo de alerta</th><th>Detalhe</th><th>Tarefa</th><th>Ação necessária</th></tr>
         ${alertasProjeto.map(a=>`<tr><td><span class="pill ${a.criticidade==='critica'?'critica':a.criticidade==='alta'?'alta':'media'}"><span class="dot"></span>${a.criticidade==='critica'?'Crítica':a.criticidade==='alta'?'Alta':'Média'}</span></td><td>${a.tipo}</td><td>${a.detalhe}</td><td class="mut">${a.tarefa}</td><td class="mut">${ACAO_POR_TIPO[a.tipo]||'—'}</td></tr>`).join('')}
         </table>
+        </div>
       ` : `<div class="note" style="margin-bottom:0;color:var(--green);">✓ Nenhum alerta ativo para este projeto no momento.</div>`}
     </div>
   `;
