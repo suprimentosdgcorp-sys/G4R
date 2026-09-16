@@ -140,6 +140,15 @@
   .filters{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; align-items:flex-end; }
   .fgroup{ display:flex; flex-direction:column; gap:4px; }
   .fgroup label{ font-size:10.5px; color:var(--muted); }
+  /* V5 — select, input de texto e input de data dentro dos filtros usam o mesmo estilo, senão o navegador
+     desenha cada tipo de campo com altura/borda/fonte diferentes (foi o que deixou o campo de Projeto destoando). */
+  .fgroup select, .fgroup input[type="text"], .fgroup input[type="date"]{
+    border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:12.5px;
+    font-family:var(--sans); color:var(--text); background:var(--card); outline:none; height:33px;
+  }
+  .fgroup input[type="text"]{ min-width:170px; }
+  .fgroup select:focus, .fgroup input:focus{ border-color:var(--navy); }
+  .fgroup input::placeholder{ color:var(--muted); }
   .clear-btn{ border:1px solid var(--line); background:var(--card); padding:7px 12px; border-radius:7px; font-size:12px; color:var(--muted); cursor:pointer; }
   .filter-gap-note{ background:#FDF0E1; border:1px dashed var(--orange); border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:11px; color:#8A5A1C; }
 </style>
@@ -695,10 +704,16 @@ function renderTela2(p){
   destroyCharts();
   const objLabels = Object.keys(objCount);
   const objValues = Object.values(objCount);
+  // V5 — mesmo ajuste de cor do resto do painel: laranja/vermelho ficam reservados pra atenção/crítico, então
+  // saem da paleta das categorias reais (que são neutras, sem significado de risco); a fatia "Sem TAP / não
+  // classificado" é uma lacuna (mesmo conceito de "Projetos sem TAP", que já é vermelho no card de governança)
+  // mas aqui, num gráfico de distribuição, o padrão do painel pra "não classificado/neutro" é o cinza (mesmo
+  // tom já usado em "Não iniciado" na barra de composição da Tela 1) — fixo, não depende da posição na lista.
+  const OBJ_PALETTE = ['#34426b','#5B7FE8','#3FA873','#9B7FE8','#7FB3E8','#6FA88F','#B98FE8','#4F6A99'];
   charts.objetivo = new Chart(document.getElementById('chartObjetivo'), {
     type:'doughnut',
     data:{ labels:[...objLabels, 'Sem TAP / não classificado'],
-      datasets:[{ data:[...objValues, semTAPCount], backgroundColor:['#E08A2C','#5B7FE8','#3FA873','#9B7FE8','#E15A5A','#F5B971','#7FB3E8','#E4E7EC'] }]},
+      datasets:[{ data:[...objValues, semTAPCount], backgroundColor:[...objLabels.map((_,i)=>OBJ_PALETTE[i % OBJ_PALETTE.length]), '#B8BEC9'] }]},
     options:{
       plugins:{legend:{position:'right',labels:{boxWidth:10,font:{size:9.5}}}},
       // V5 — clicável: fatia de objetivo filtra por FILTROS.objetivo; a última fatia ("Sem TAP / não
@@ -901,13 +916,12 @@ function renderTela4(p){
       <div class="kpi"><div class="top"><span class="lbl">Alertas médios</span><span class="icon gray">●</span></div><div class="val">${nMedia}</div></div>
     </div>
     <div class="panel">
-      <div class="note">Clique numa linha pra abrir o detalhamento do projeto e ver exatamente quais tarefas estão por trás do alerta. Role dentro da tabela pra ver os demais alertas.</div>
+      <div class="note">Clique numa linha pra abrir o detalhamento do projeto e ver exatamente quais tarefas estão por trás do alerta. Role dentro da tabela pra ver os demais — mostrando todos os ${alertas.length}, dos mais críticos pros médios.</div>
       <div class="scroll-tall">
       <table><tr><th>Criticidade</th><th>Projeto</th><th>Gestor</th><th>Tipo de alerta</th><th>Detalhe</th><th>Tarefa</th><th>Ação necessária</th></tr>
-      ${alertas.slice(0,60).map(a=>`<tr class="alert-row" onclick="abrirProjeto('${a.projeto.replace(/'/g,"\\'")}')"><td><span class="pill ${a.criticidade==='critica'?'critica':a.criticidade==='alta'?'alta':'media'}"><span class="dot"></span>${a.criticidade==='critica'?'Crítica':a.criticidade==='alta'?'Alta':'Média'}</span></td><td>${a.projeto}</td><td>${a.gestor}</td><td>${a.tipo}</td><td>${a.detalhe}</td><td class="mut">${a.tarefa}</td><td class="mut">${ACAO_POR_TIPO[a.tipo]||'—'}</td></tr>`).join('')}
+      ${alertas.map(a=>`<tr class="alert-row" onclick="abrirProjeto('${a.projeto.replace(/'/g,"\\'")}')"><td><span class="pill ${a.criticidade==='critica'?'critica':a.criticidade==='alta'?'alta':'media'}"><span class="dot"></span>${a.criticidade==='critica'?'Crítica':a.criticidade==='alta'?'Alta':'Média'}</span></td><td>${a.projeto}</td><td>${a.gestor}</td><td>${a.tipo}</td><td>${a.detalhe}</td><td class="mut">${a.tarefa}</td><td class="mut">${ACAO_POR_TIPO[a.tipo]||'—'}</td></tr>`).join('')}
       </table>
       </div>
-      ${alertas.length>60 ? `<div class="note" style="margin-top:10px;">Mostrando 60 de ${alertas.length} alertas.</div>` : ''}
     </div>
   `;
   wireFiltros();
